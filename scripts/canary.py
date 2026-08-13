@@ -28,8 +28,13 @@ def main() -> None:
     parser.add_argument("--max-bytes", type=int, default=64 * 1024 * 1024)
     parser.add_argument("--stream-format", choices=("mpegps", "ts"), default="mpegps")
     parser.add_argument("--skip-snapshot", action="store_true")
+    parser.add_argument("--token-file", type=Path)
     arguments = parser.parse_args()
-    token = sys.stdin.readline().strip()
+    token = (
+        arguments.token_file.read_text(encoding="utf-8").strip()
+        if arguments.token_file
+        else sys.stdin.readline().strip()
+    )
     if len(token) < 32:
         raise SystemExit("API token missing on standard input")
     base = arguments.base_url.rstrip("/")
