@@ -53,6 +53,9 @@ SceneTrove uses the finite-capture workflow, never the infinite live endpoint:
 4. Verify byte count, SHA-256 and MPEG-PS pack start.
 5. Atomically publish it into the registered device archive with an `hiv*.mp4`
    name. SceneTrove's `mpeg_ps` profile performs the existing remux.
+6. Persist and `fsync` a local receipt, then send idempotent
+   `DELETE /v1/recordings/{id}`. A `204` proves the remote spool is released or
+   was already released. Remove and `fsync` the receipt only after that ACK.
 
 The consumer must retain its idempotency key until import succeeds. AI analysis
 remains governed by the SceneTrove device policy; the bridge never enables it.
@@ -62,7 +65,10 @@ The production image also contains the reference adapter at
 entrypoint overridden, a read-only API-token mount, and only the destination
 device folder writable. The adapter rejects redirects and credential-bearing
 URLs, bounds all responses, verifies the MPEG-PS pack prefix, byte count and
-SHA-256, then atomically publishes the finished file.
+SHA-256, then atomically publishes the finished file. Its durable receipt
+closes the crash window after local commit: a restart retries only the ACK and
+never creates duplicate media. Active captures return `409 recording_active`;
+unknown and previously acknowledged IDs return `204` by design.
 
 ## Canary and rollback
 

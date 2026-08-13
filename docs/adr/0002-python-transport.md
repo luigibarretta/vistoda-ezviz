@@ -1,6 +1,6 @@
 # ADR-0002: Python transport with stable HTTP contract
 
-- Status: Accepted
+- Status: Superseded by ADR-0012
 - Date: 2026-08-13
 
 ## Decision

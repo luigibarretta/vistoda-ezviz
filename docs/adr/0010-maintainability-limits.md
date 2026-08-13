@@ -5,11 +5,11 @@
 
 ## Decision
 
-Every human-maintained Python, Markdown, YAML, TOML, JSON and Dockerfile in the
+Every human-maintained Rust, Python, Markdown, YAML, TOML, JSON and Dockerfile in the
 repository is limited to 300 physical lines. The guard runs locally and in CI.
 Generated dependency lock files and tool caches are excluded; production files
-do not receive one-off exemptions. Ruff formatting is deterministic and checked
-in CI alongside lint, strict typing and tests.
+do not receive one-off exemptions. Rustfmt and Clippy are deterministic and
+checked in CI alongside tests and the RustSec audit.
 
 ## Consequences
 

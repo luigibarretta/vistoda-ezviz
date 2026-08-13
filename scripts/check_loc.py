@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 MAX_LINES = 300
-SUFFIXES = {".py", ".md", ".yaml", ".yml", ".toml", ".json"}
+SUFFIXES = {".py", ".rs", ".md", ".yaml", ".yml", ".toml", ".json"}
 NAMES = {"Dockerfile"}
 EXCLUDED_PARTS = {".git", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv"}
 EXCLUDED_NAMES = {"uv.lock"}

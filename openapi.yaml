@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: EZVIZ VTM Bridge
-  version: 1.0.0
+  version: 1.1.0
   description: Internal bounded media contract for Home Assistant and SceneTrove.
 servers:
   - url: http://ezviz-vtm-bridge:8765
@@ -106,6 +106,28 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/Recording"}
         "404": {$ref: "#/components/responses/NotFound"}
+    delete:
+      summary: Acknowledge a locally committed recording
+      description: >-
+        Idempotently releases the bridge spool after the consumer has verified
+        and durably committed the media. Unknown or already acknowledged IDs
+        also return 204. Active recordings return 409 and are never removed.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RecordingId"
+      responses:
+        "204":
+          description: Recording spool released or already absent
+        "409":
+          description: Recording is still pending or recording
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: {type: string, const: recording_active}
   /v1/recordings/{recording_id}/media:
     get:
       security:

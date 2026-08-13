@@ -9,11 +9,10 @@ Deploy an immutable, read-only container on `gpu-01`, without a public Traefik
 route. Only Home Assistant and SceneTrove may reach it. Persist only the token
 and bounded recording state. Export low-cardinality health and Prometheus
 metrics using camera aliases. CI owns tests and images; Ansible/Portainer owns
-production deployment. The container builder and Python base image are pinned
-by digest. Build tools and runtime Python dependencies are exported from the
-frozen `uv.lock` and verified against hashes. The application wheel is built
-without isolated dependency resolution, then the runtime installs only from a
-local wheel set without a package index.
+production deployment. The Rust builder and Debian runtime base are pinned by
+digest. Cargo dependencies are frozen in `Cargo.lock`, RustSec-audited in CI,
+and absent from the runtime image. Only the two stripped binaries, CA roots and
+FFmpeg cross the build boundary.
 
 ## Consequences
 

@@ -10,8 +10,8 @@
 
 ## Trust boundaries
 
-The EZVIZ cloud and `pyezvizapi` are vendor-facing dependencies. The bridge is
-the only component allowed to cross that boundary. Home Assistant and
+The EZVIZ cloud is the vendor-facing dependency. The native Rust bridge is the
+only component allowed to cross that boundary. Home Assistant and
 SceneTrove are authenticated consumers on the management LAN. Browsers never
 receive bridge or EZVIZ credentials.
 
@@ -23,7 +23,7 @@ receive bridge or EZVIZ credentials.
 | Credential disclosure | Token files `0600`; request/exception redaction; no debug bodies, stream URLs or serial labels |
 | Slow-client memory exhaustion | Bounded queues; slow subscriber eviction; maximum subscribers |
 | Battery denial of service | One upstream per camera; idle grace; stream and snapshot rate limits; bounded recording duration |
-| Disk exhaustion | Recording quota, maximum duration, atomic files and explicit retention owner |
+| Disk exhaustion | Recording quota, maximum duration, atomic files, bounded ACK tombstones and explicit retention owner |
 | Malformed cloud frames | Bounded chunk sizes, producer restart backoff and no unsafe parsing in the HTTP process |
 | FFmpeg hangs | Fixed argv, no shell, process-group termination and bounded shutdown |
 | Token race/corruption | Atomic replace with fsync and strict file mode; one token owner process |

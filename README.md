@@ -30,28 +30,29 @@ modify camera firmware.
 EZVIZ VTM/VTDU
       |
       v
-pyezvizapi transport -> bounded raw hub -> MPEG-PS / recordings / snapshots
-                               |
-                               +-> shared FFmpeg copy-remux -> MPEG-TS
+native Rust transport -> bounded raw hub -> MPEG-PS / recordings / snapshots
+                              |
+                              +-> shared FFmpeg copy-remux -> MPEG-TS
 ```
 
-`pyezvizapi` is the replaceable vendor adapter. Consumers depend only on
-[`openapi.yaml`](openapi.yaml). Architectural choices and their consequences
-are indexed in [`docs/adr/README.md`](docs/adr/README.md).
+The transport implements the required VTM/VTDU wire subset directly in safe
+Rust; no Python or vendor SDK is present at runtime. Consumers depend only on
+[`openapi.yaml`](openapi.yaml). Architectural choices and consequences are
+indexed in [`docs/adr/README.md`](docs/adr/README.md).
 
 ## Quick start
 
-Requirements: Docker with Compose, Python 3.12+ with `uv`, a random API token of
-at least 32 characters and the camera serial. Copy the examples, enroll from a
-trusted interactive terminal and keep all real secrets outside Git:
+Requirements: Docker with Compose, or Rust 1.88 for local development, plus a
+random API token of at least 32 characters and the camera serial. Copy the
+examples, enroll from a trusted terminal and keep real secrets outside Git:
 
 ```bash
 install -d -m 0700 config data secrets
 cp deploy/cameras.example.json config/cameras.json
 openssl rand -hex 32 > secrets/api_token
 chmod 600 secrets/api_token
-uv sync --locked
-uv run ezviz-vtm-bridge enroll \
+cargo build --release --locked
+./target/release/ezviz-vtm-bridge enroll \
   --account 'owner@example.com' --token-file data/token.json
 docker compose -f deploy/compose.example.yaml config --quiet
 docker compose -f deploy/compose.example.yaml up -d
@@ -72,6 +73,7 @@ for canaries, monitoring, backup and rollback.
 | `GET /v1/cameras/{camera}/live.mpegps` | shared MPEG-PS | bearer |
 | `GET /v1/cameras/{camera}/live.ts` | shared MPEG-TS | bearer or Basic |
 | `POST /v1/cameras/{camera}/recordings` | finite capture | bearer |
+| `DELETE /v1/recordings/{id}` | idempotent spool ACK after local commit | bearer |
 
 Basic authentication is reserved for Home Assistant's Generic Camera client:
 the fixed username is `homeassistant` and the API token is the password. The
@@ -85,30 +87,28 @@ runs as UID/GID `10001`, with a read-only root filesystem, dropped capabilities,
 bounded memory/processes and only `/data` writable. It has no public Traefik
 route; network access is limited to Home Assistant, SceneTrove and monitoring.
 
-Build tools and runtime dependencies come from the frozen `uv.lock`, are
-verified against package hashes and are installed into the runtime only from
-local wheels. Builder and Python base images are pinned by digest. The
-published image digest is the deployment identity.
+Rust dependencies are frozen in `Cargo.lock` and RustSec-audited. Builder and
+runtime base images are pinned by digest; build tooling does not cross into the
+runtime. The published image digest is the deployment identity.
 
 ## Development and quality gates
 
-Python 3.12+ and `uv` are required:
+Rust 1.88+ and Docker are required:
 
 ```bash
-uv sync --locked --all-groups
-uv run ruff check .
-uv run ruff format --check .
-uv run python scripts/check_loc.py
-uv run mypy src
-uv run pytest
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo test --locked --all-targets
+cargo audit --deny warnings
+python3 scripts/check_loc.py
 docker build --tag ezviz-vtm-bridge:test .
 ```
 
 Tests are deterministic and require neither network nor EZVIZ credentials.
-Live canaries are separate and opt-in. CI enforces lint, formatting, strict
-typing, branch-aware coverage, image build and a maximum of 300 physical lines
-for every maintained source, configuration and documentation file. Split a
-responsibility instead of adding a LOC exception.
+Live canaries are separate and opt-in. CI enforces formatting, strict Clippy,
+tests, RustSec audit, image build and a maximum of 300 physical lines for every
+maintained source, configuration and documentation file. Split a responsibility
+instead of adding a LOC exception.
 
 ## Security and operations
 
@@ -128,6 +128,6 @@ rules, [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for trust boundaries and
 ## License and notices
 
 Copyright 2026 Luigi Barretta. Licensed under Apache-2.0; see [`LICENSE`](LICENSE)
-and [`NOTICE`](NOTICE). `pyezvizapi` is an Apache-2.0 dependency. The LGPL-2.1
-LE-EZVIZ-VS project is credited as protocol research only; no source is copied
-from it.
+and [`NOTICE`](NOTICE). pyEzvizApi, ezviz_hp7 and LE-EZVIZ-VS are credited as
+protocol research and compatibility evidence only; no source is copied or
+linked from them.

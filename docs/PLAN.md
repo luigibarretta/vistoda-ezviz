@@ -10,14 +10,14 @@ credentials, continuously draining the camera battery, or transcoding video.
 
 1. **Contracts and safety** — accepted ADRs, threat model, OpenAPI contract,
    secret-redaction tests and bounded defaults.
-2. **Transport** — token-backed `pyezvizapi` adapter, fresh snapshot and a
-   cancellable MPEG-PS producer. Offline tests use a deterministic fake.
+2. **Transport** — native Rust token refresh, VTM/VTDU, fresh snapshot and a
+   cancellable MPEG-PS producer. Offline tests use golden wire fixtures.
 3. **Fan-out** — exactly one upstream per camera, bounded subscriber queues,
    slow-consumer eviction, idle shutdown and restart backoff.
 4. **Consumer media** — raw MPEG-PS for SceneTrove; a shared FFmpeg copy-remux
    to MPEG-TS for Home Assistant; no video re-encode.
 5. **Finite capture** — idempotent, duration-bounded recordings, atomic publish,
-   SHA-256 manifest and authenticated download.
+   SHA-256 manifest, authenticated download and durable idempotent ACK.
 6. **Packaging** — rootless/read-only container, persistent token/recording
    state only, healthcheck, metrics and immutable CI artifacts.
 7. **Canary** — snapshot decode, bounded live stream, multi-consumer fan-out,
@@ -28,8 +28,8 @@ credentials, continuously draining the camera battery, or transcoding video.
 
 ## Global quality gates
 
-- Python 3.12+, strict mypy and Ruff;
-- branch-aware test coverage at least 90%;
+- Rust 1.88+, rustfmt and strict Clippy `all`, `pedantic` and `nursery`;
+- property, negative, crash-recovery and HTTP contract tests;
 - deterministic tests require no network or secrets;
 - every loop, queue, recording and request has an explicit bound;
 - no API response or log contains vendor tokens, camera serials or signed URLs;
@@ -40,15 +40,18 @@ credentials, continuously draining the camera battery, or transcoding video.
 
 ## Verified delivery state
 
-- Phases 1–6 passed locally and in the immutable container: Ruff lint/format,
-  strict mypy, 62 deterministic tests, branch-aware coverage above 91% and the
-  300-LOC guard.
-- Phase 7 passed against the owned CP4: fresh JPEG, H.264/AAC MPEG-PS and
-  MPEG-TS, one upstream for simultaneous consumers, teardown and an atomic
-  finite SceneTrove import.
-- Phase 8 is active in production from immutable image
-  `b49c6067d1f960af27cccb23c663d46c986602b0` at digest
-  `sha256:92d9a77cfa74c19698183fbf34a1eaf53a99b9abb35afd7a1028fbb67a93f685`.
+- Phases 1–6 passed for the native Rust implementation: rustfmt, strict Clippy,
+  deterministic unit/contract/property/recovery tests, RustSec audit, frozen
+  Rust 1.88 container build and the 300-LOC guard.
+- The recording contract is OpenAPI 1.1: SceneTrove commits and verifies local
+  media before idempotent `DELETE`; a durable receipt closes the crash window
+  and bounded tombstones preserve retry behavior across bridge restarts.
+- Phase 7 passed previously against the owned CP4 for the Python oracle: fresh
+  JPEG, H.264/AAC MPEG-PS and MPEG-TS, fan-out, teardown and finite import. The
+  Rust candidate must repeat those live checks before replacing it.
+- Phase 8 remains on the previously verified immutable Python image until the
+  Rust canary and rollback rehearsal pass; the exact post-cutover digest is
+  recorded here and in infrastructure as code at release.
 - The dedicated EZVIZ enrollment session is encrypted in the infrastructure
   vault; its plaintext enrollment artifact was securely removed after import.
 - Home Assistant uses the supported Generic Camera flow as

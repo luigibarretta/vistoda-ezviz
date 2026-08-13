@@ -1,0 +1,296 @@
+use std::{collections::BTreeMap, convert::Infallible, sync::Arc, time::Duration};
+
+use async_stream::stream;
+use axum::{
+    Json, Router,
+    body::Body,
+    extract::{Path, Request, State},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
+    routing::{get, post},
+};
+use serde::Deserialize;
+use serde_json::json;
+use tokio_util::io::ReaderStream;
+
+use crate::{
+    VERSION, auth::ApiAuthenticator, config::BridgeConfig, error::BridgeError, hub::RawStreamHub,
+    metrics::Metrics, recordings::RecordingManager, remux::MpegTsHub, snapshot::SnapshotService,
+    storage::ensure_private_regular, transport::CameraTransport,
+};
+
+pub struct Runtime {
+    pub config: BridgeConfig,
+    pub auth: ApiAuthenticator,
+    pub metrics: Metrics,
+    pub raw: BTreeMap<String, Arc<RawStreamHub>>,
+    pub ts: BTreeMap<String, Arc<MpegTsHub>>,
+    pub snapshots: SnapshotService,
+    pub recordings: Arc<RecordingManager>,
+}
+
+impl Runtime {
+    pub fn build(
+        config: BridgeConfig,
+        transport: Arc<dyn CameraTransport>,
+    ) -> Result<Arc<Self>, BridgeError> {
+        let token = ensure_private_regular(&config.api_token_file, 32)?;
+        let auth = ApiAuthenticator::new(token)?;
+        let metrics = Metrics::default();
+        let mut raw = BTreeMap::new();
+        let mut ts = BTreeMap::new();
+        for (alias, camera) in &config.cameras {
+            let raw_hub = RawStreamHub::new(
+                alias.clone(),
+                camera.clone(),
+                Arc::clone(&transport),
+                metrics.clone(),
+                config.queue_chunks,
+                config.max_subscribers,
+                Duration::from_secs(config.idle_grace_seconds),
+            );
+            let ts_hub = MpegTsHub::new(
+                alias.clone(),
+                Arc::clone(&raw_hub),
+                metrics.clone(),
+                config.ffmpeg_path.clone(),
+                config.queue_chunks,
+                config.max_subscribers,
+                Duration::from_secs(config.idle_grace_seconds),
+            );
+            raw.insert(alias.clone(), raw_hub);
+            ts.insert(alias.clone(), ts_hub);
+        }
+        let snapshots = SnapshotService::new(
+            config.cameras.clone(),
+            transport,
+            metrics.clone(),
+            Duration::from_secs(config.snapshot_cache_seconds),
+            Duration::from_secs(config.snapshot_stale_seconds),
+        );
+        let recordings = RecordingManager::load(
+            config.data_dir.join("recordings"),
+            raw.clone(),
+            metrics.clone(),
+            config.max_recording_seconds,
+            config.max_recording_bytes,
+            config.recording_quota_bytes,
+        )?;
+        Ok(Arc::new(Self {
+            config,
+            auth,
+            metrics,
+            raw,
+            ts,
+            snapshots,
+            recordings,
+        }))
+    }
+
+    pub async fn close(&self) {
+        self.recordings.close().await;
+        for hub in self.ts.values() {
+            hub.close().await;
+        }
+        for hub in self.raw.values() {
+            hub.close().await;
+        }
+    }
+}
+
+pub fn router(runtime: Arc<Runtime>) -> Router {
+    Router::new()
+        .route("/healthz", get(health))
+        .route("/metrics", get(metrics))
+        .route("/v1/cameras/{camera}/snapshot.jpg", get(snapshot))
+        .route("/v1/cameras/{camera}/live.mpegps", get(raw_stream))
+        .route("/v1/cameras/{camera}/live.ts", get(ts_stream))
+        .route("/v1/cameras/{camera}/recordings", post(create_recording))
+        .route(
+            "/v1/recordings/{recording_id}",
+            get(get_recording).delete(delete_recording),
+        )
+        .route(
+            "/v1/recordings/{recording_id}/media",
+            get(download_recording),
+        )
+        .layer(middleware::from_fn_with_state(
+            Arc::clone(&runtime),
+            authenticate,
+        ))
+        .with_state(runtime)
+}
+
+async fn authenticate(
+    State(runtime): State<Arc<Runtime>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if request.uri().path() == "/healthz" || runtime.auth.accepts(request.headers()) {
+        return next.run(request).await;
+    }
+    let mut response = (
+        StatusCode::UNAUTHORIZED,
+        Json(json!({"error":"unauthorized"})),
+    )
+        .into_response();
+    response.headers_mut().insert(
+        header::WWW_AUTHENTICATE,
+        HeaderValue::from_static("Basic realm=\"ezviz-vtm-bridge\""),
+    );
+    response
+}
+
+async fn health() -> Json<serde_json::Value> {
+    Json(json!({"status":"ok", "version":VERSION}))
+}
+
+async fn metrics(State(runtime): State<Arc<Runtime>>) -> Response {
+    response(
+        StatusCode::OK,
+        "text/plain; charset=utf-8",
+        runtime.metrics.render().await,
+    )
+}
+
+async fn snapshot(
+    State(runtime): State<Arc<Runtime>>,
+    Path(camera): Path<String>,
+) -> Result<Response, BridgeError> {
+    let image = runtime.snapshots.get(&camera).await?;
+    let mut result = response(
+        StatusCode::OK,
+        "image/jpeg",
+        Body::from(image.as_ref().clone()),
+    );
+    no_store(result.headers_mut());
+    Ok(result)
+}
+
+async fn raw_stream(
+    State(runtime): State<Arc<Runtime>>,
+    Path(camera): Path<String>,
+) -> Result<Response, BridgeError> {
+    let hub = Arc::clone(
+        runtime
+            .raw
+            .get(&camera)
+            .ok_or(BridgeError::CameraNotFound)?,
+    );
+    let mut subscription = hub.subscribe().await?;
+    runtime
+        .metrics
+        .increment("stream_requests_total", &camera)
+        .await;
+    let body = Body::from_stream(stream! {
+        while let Some(chunk) = subscription.receiver.recv().await {
+            yield Ok::<_, Infallible>(chunk);
+        }
+        hub.unsubscribe(subscription.id);
+    });
+    let mut result = response(StatusCode::OK, "video/mpeg", body);
+    no_store(result.headers_mut());
+    Ok(result)
+}
+
+async fn ts_stream(
+    State(runtime): State<Arc<Runtime>>,
+    Path(camera): Path<String>,
+) -> Result<Response, BridgeError> {
+    let hub = Arc::clone(runtime.ts.get(&camera).ok_or(BridgeError::CameraNotFound)?);
+    let mut subscription = hub.subscribe().await?;
+    runtime
+        .metrics
+        .increment("stream_requests_total", &camera)
+        .await;
+    let body = Body::from_stream(stream! {
+        while let Some(chunk) = subscription.receiver.recv().await {
+            yield Ok::<_, Infallible>(chunk);
+        }
+        hub.unsubscribe(subscription.id);
+    });
+    let mut result = response(StatusCode::OK, "video/mp2t", body);
+    no_store(result.headers_mut());
+    Ok(result)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RecordingRequest {
+    duration_seconds: u64,
+}
+
+async fn create_recording(
+    State(runtime): State<Arc<Runtime>>,
+    Path(camera): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<RecordingRequest>,
+) -> Result<impl IntoResponse, BridgeError> {
+    let key = headers
+        .get("idempotency-key")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let manifest = runtime
+        .recordings
+        .start(&camera, payload.duration_seconds, key)
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(manifest)))
+}
+
+async fn get_recording(
+    State(runtime): State<Arc<Runtime>>,
+    Path(id): Path<String>,
+) -> Result<Json<crate::recordings::RecordingManifest>, StatusCode> {
+    runtime
+        .recordings
+        .get(&id)
+        .await
+        .map(Json)
+        .ok_or(StatusCode::NOT_FOUND)
+}
+
+async fn delete_recording(
+    State(runtime): State<Arc<Runtime>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, BridgeError> {
+    runtime.recordings.acknowledge(&id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn download_recording(
+    State(runtime): State<Arc<Runtime>>,
+    Path(id): Path<String>,
+) -> Result<Response, StatusCode> {
+    let path = runtime
+        .recordings
+        .media_path(&id)
+        .await
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let file = tokio::fs::File::open(path)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let mut result = response(
+        StatusCode::OK,
+        "video/mpeg",
+        Body::from_stream(ReaderStream::new(file)),
+    );
+    no_store(result.headers_mut());
+    Ok(result)
+}
+
+fn response(status: StatusCode, content_type: &'static str, body: impl Into<Body>) -> Response {
+    let mut response = Response::new(body.into());
+    *response.status_mut() = status;
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    response
+}
+fn no_store(headers: &mut HeaderMap) {
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
+}

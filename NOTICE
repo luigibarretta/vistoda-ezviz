@@ -1,6 +1,6 @@
 EZVIZ VTM Bridge
 Copyright 2026 Luigi Barretta
 
-This product includes the Apache-2.0 pyezvizapi library. LE-EZVIZ-VS is
-credited as protocol research only; no source code from that project is
-included in this distribution.
+The pyEzvizApi, ezviz_hp7 and LE-EZVIZ-VS projects are credited as protocol
+research and compatibility evidence only. No source code from those projects
+is included in or linked by this distribution.

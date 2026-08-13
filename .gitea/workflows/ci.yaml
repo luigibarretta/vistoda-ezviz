@@ -8,20 +8,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: dtolnay/rust-toolchain@1.88.0
         with:
-          enable-cache: true
-      - run: uv sync --locked --all-groups
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
-      - run: uv run python scripts/check_loc.py
-      - run: uv run mypy src
-      - run: uv run pytest
-      - run: uv build
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - run: cargo test --locked --all-targets
+      - run: python3 scripts/check_loc.py
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit --deny warnings
       - run: >-
-          docker build --build-arg VERSION=0.1.0+ci --build-arg REVISION=ci
+          docker build --build-arg VERSION=0.2.0+ci --build-arg REVISION=ci
           --tag ezviz-vtm-bridge:test .
       - run: >-
           docker run --rm --network none --read-only --user 10001:10001
-          --entrypoint python ezviz-vtm-bridge:test
-          -c "import ezviz_vtm_bridge, aiohttp, pyezvizapi"
+          ezviz-vtm-bridge:test --version

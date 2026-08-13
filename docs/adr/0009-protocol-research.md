@@ -12,8 +12,9 @@ VTM using `pyezvizapi` 1.0.5.0.
 
 ## Decision
 
-Keep `pyezvizapi` as the only runtime protocol implementation. Consult these
-primary-source repositories as independent evidence:
+Use the independently implemented native Rust transport described by ADR-0012.
+Retain `pyezvizapi` and these primary-source repositories as compatibility
+oracles and independent evidence:
 
 - Bobsilvio `ezviz_hp7` at commit `a6c038a3`: VTM/VTDU bootstrap, bounded
   relays, account-protecting circuit breaker, output-stall watchdog, GOP cache
@@ -35,6 +36,6 @@ quirks apply to CP4 without capture evidence.
 
 ## Consequences
 
-No third-party code is copied, so the bridge remains Apache-2.0. Research
+No third-party code is copied or linked, so the bridge remains Apache-2.0. Research
 commits and licenses are auditable in `docs/RESEARCH.md`. A new protocol path
 requires a fixture, negative tests, an ADR amendment and a live CP4 canary.

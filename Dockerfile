@@ -1,26 +1,20 @@
 # syntax=docker/dockerfile:1.7
-FROM ghcr.io/astral-sh/uv:0.11.19@sha256:b46b03ddfcfbf8f547af7e9eaefdf8a39c8cebcba7c98858d3162bd28cf536f6 AS uv
-
-FROM python:3.13.5-slim-bookworm@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419 AS builder
+FROM rust:1.88.0-bookworm@sha256:af306cfa71d987911a781c37b59d7d67d934f49684058f96cf72079c3626bfe0 AS builder
 WORKDIR /build
-COPY --from=uv /uv /usr/local/bin/uv
-COPY pyproject.toml uv.lock README.md LICENSE NOTICE ./
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir -p src/bin \
+    && printf '\n' > src/lib.rs \
+    && printf 'fn main() {}\n' > src/bin/bridge.rs \
+    && printf 'fn main() {}\n' > src/bin/scenetrove_pull.rs \
+    && cargo build --release --locked --bins \
+    && cargo clean --release --package ezviz-vtm-bridge \
+    && rm -rf src
 COPY src ./src
-RUN uv export --frozen --only-group build --no-emit-project \
-      --format requirements-txt --output-file /build-requirements.txt \
-    && python -m pip wheel --no-cache-dir --require-hashes \
-      --wheel-dir /build-wheels --requirement /build-requirements.txt \
-    && python -m pip install --no-cache-dir --no-index \
-      --find-links=/build-wheels "hatchling==1.27.0" \
-    && uv export --frozen --no-dev --no-emit-project --format requirements-txt \
-      --output-file /requirements.txt \
-    && python -m pip wheel --no-cache-dir --require-hashes \
-      --wheel-dir /wheels --requirement /requirements.txt \
-    && python -m pip wheel --no-cache-dir --no-build-isolation --no-deps \
-      --wheel-dir /wheels .
+RUN cargo build --release --locked --bins \
+    && strip target/release/ezviz-vtm-bridge target/release/scenetrove-pull
 
-FROM python:3.13.5-slim-bookworm@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419
-ARG VERSION=0.1.0
+FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
+ARG VERSION=0.2.0
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="EZVIZ VTM Bridge" \
       org.opencontainers.image.version=$VERSION \
@@ -32,16 +26,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 bridge \
     && useradd --uid 10001 --gid bridge --no-create-home --home-dir /nonexistent bridge
-COPY --from=builder /wheels /wheels
-RUN python -m pip install --no-cache-dir --no-index --find-links=/wheels \
-      "ezviz-vtm-bridge==0.1.0" \
-    && rm -rf /wheels
-COPY --chmod=0555 scripts/scenetrove_pull.py /usr/local/bin/scenetrove-pull
+COPY --from=builder --chmod=0555 /build/target/release/ezviz-vtm-bridge /usr/local/bin/
+COPY --from=builder --chmod=0555 /build/target/release/scenetrove-pull /usr/local/bin/
 USER 10001:10001
 WORKDIR /app
 EXPOSE 8765
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz', timeout=3).read()"]
+  CMD ["ezviz-vtm-bridge", "healthcheck"]
 ENTRYPOINT ["ezviz-vtm-bridge"]
 CMD ["serve"]
