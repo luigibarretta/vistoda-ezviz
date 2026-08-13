@@ -21,7 +21,7 @@ copy the official Home Assistant EZVIZ token into production bridge state.
 Create a Generic Camera using:
 
 - still image URL: `http://BRIDGE:8765/v1/cameras/front-door/snapshot.jpg`;
-- stream source: `http://BRIDGE:8765/v1/cameras/front-door/live.ts`;
+- stream source: `http://BRIDGE:8765/v1/cameras/front-door/stream.ts`;
 - authentication: Basic;
 - username: `homeassistant`;
 - password: the bridge API token;

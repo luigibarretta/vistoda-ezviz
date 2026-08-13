@@ -20,7 +20,7 @@ credentials, continuously draining the camera battery, or transcoding video.
    SHA-256 manifest and authenticated download.
 6. **Packaging** — rootless/read-only container, persistent token/recording
    state only, healthcheck, metrics and immutable CI artifacts.
-7. **Canary** — snapshot decode, 10-minute live stream, multi-consumer fan-out,
+7. **Canary** — snapshot decode, bounded live stream, multi-consumer fan-out,
    disconnect cleanup, restart recovery and no secret-bearing logs.
 8. **Integration** — Home Assistant Generic Camera first; SceneTrove connector
    imports MPEG-PS through its existing remux path. Automatic AI remains off
@@ -37,3 +37,15 @@ credentials, continuously draining the camera battery, or transcoding video.
 - configuration is fail-closed and refuses default API credentials;
 - rollback is removal of the consumer URL and bridge container only; official
   Home Assistant EZVIZ entities and SceneTrove archives remain untouched.
+
+## Verified delivery state
+
+- Phases 1–6 passed locally and in the immutable container: Ruff, strict mypy,
+  58 deterministic tests, 90% branch coverage and the 300-LOC guard.
+- Phase 7 passed against the owned CP4: fresh JPEG, H.264/AAC MPEG-PS and
+  MPEG-TS, one upstream for simultaneous consumers, teardown and an atomic
+  finite SceneTrove import.
+- Production image, Portainer Compose, source-filtered firewall policy,
+  Home Assistant config-flow reconciler and SceneTrove pull unit are prepared.
+- Activation remains fail-closed until a dedicated EZVIZ enrollment token is
+  created; the existing Home Assistant session is never reused.
