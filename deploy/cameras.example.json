@@ -1,0 +1,6 @@
+{
+  "front-door": {
+    "serial": "REPLACE_WITH_SERIAL",
+    "decrypt_video": false
+  }
+}

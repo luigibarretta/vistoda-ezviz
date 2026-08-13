@@ -1,0 +1,15 @@
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.egg-info/
+dist/
+build/
+data/
+*.mpg
+*.mpeg
+*.ts
+*.jpg
+*.json.tmp

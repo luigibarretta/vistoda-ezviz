@@ -1,0 +1,176 @@
+openapi: 3.1.0
+info:
+  title: EZVIZ VTM Bridge
+  version: 1.0.0
+  description: Internal bounded media contract for Home Assistant and SceneTrove.
+servers:
+  - url: http://ezviz-vtm-bridge:8765
+paths:
+  /healthz:
+    get:
+      security: []
+      responses:
+        "200":
+          description: Minimal liveness response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /metrics:
+    get:
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Low-cardinality Prometheus exposition
+          content:
+            text/plain:
+              schema: {type: string}
+  /v1/cameras/{camera}/snapshot.jpg:
+    get:
+      security:
+        - bearerAuth: []
+        - basicAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Camera"
+      responses:
+        "200":
+          description: Fresh or briefly coalesced JPEG snapshot
+          headers:
+            Cache-Control: {schema: {type: string, const: no-store}}
+          content:
+            image/jpeg:
+              schema: {type: string, contentEncoding: binary}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/cameras/{camera}/live.mpegps:
+    get:
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Camera"
+      responses:
+        "200":
+          description: Chunked canonical MPEG program stream
+          content:
+            video/mpeg:
+              schema: {type: string, contentEncoding: binary}
+  /v1/cameras/{camera}/live.ts:
+    get:
+      security:
+        - bearerAuth: []
+        - basicAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Camera"
+      responses:
+        "200":
+          description: Chunked shared copy-remuxed MPEG transport stream
+          content:
+            video/mp2t:
+              schema: {type: string, contentEncoding: binary}
+  /v1/cameras/{camera}/recordings:
+    post:
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Camera"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 8, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [duration_seconds]
+              properties:
+                duration_seconds: {type: integer, minimum: 1}
+      responses:
+        "202":
+          description: Recording accepted or existing idempotent result
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Recording"}
+  /v1/recordings/{recording_id}:
+    get:
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RecordingId"
+      responses:
+        "200":
+          description: Recording manifest
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Recording"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /v1/recordings/{recording_id}/media:
+    get:
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RecordingId"
+      responses:
+        "200":
+          description: Immutable MPEG-PS artifact
+          content:
+            video/mpeg:
+              schema: {type: string, contentEncoding: binary}
+        "404": {$ref: "#/components/responses/NotFound"}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+    basicAuth:
+      type: http
+      scheme: basic
+      description: Fixed username homeassistant; token is the password.
+  parameters:
+    Camera:
+      name: camera
+      in: path
+      required: true
+      schema: {type: string, pattern: "^[A-Za-z0-9_-]+$"}
+    RecordingId:
+      name: recording_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+  schemas:
+    Health:
+      type: object
+      required: [status, version]
+      properties:
+        status: {type: string, const: ok}
+        version: {type: string}
+    Recording:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - recording_id
+        - camera
+        - status
+        - requested_at
+        - requested_duration_seconds
+        - media_type
+      properties:
+        schema_version: {type: integer, const: 1}
+        recording_id: {type: string, format: uuid}
+        camera: {type: string}
+        status: {type: string, enum: [pending, recording, ready, failed]}
+        requested_at: {type: string, format: date-time}
+        started_at: {type: [string, "null"], format: date-time}
+        completed_at: {type: [string, "null"], format: date-time}
+        requested_duration_seconds: {type: integer}
+        actual_duration_seconds: {type: [number, "null"]}
+        media_type: {type: string, const: video/mpeg}
+        bytes: {type: [integer, "null"]}
+        sha256: {type: [string, "null"]}
+        error_code: {type: [string, "null"]}
+  responses:
+    NotFound:
+      description: Resource is absent or not ready
+security:
+  - bearerAuth: []

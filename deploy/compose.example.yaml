@@ -1,0 +1,33 @@
+services:
+  ezviz-vtm-bridge:
+    image: gitea.luigibarretta.com/luigibarretta/ezviz-vtm-bridge:0.1.0
+    restart: unless-stopped
+    read_only: true
+    user: "10001:10001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    environment:
+      EZVIZ_BRIDGE_CAMERAS_FILE: /config/cameras.json
+      EZVIZ_BRIDGE_API_TOKEN_FILE: /run/secrets/api_token
+      EZVIZ_BRIDGE_EZVIZ_TOKEN_FILE: /data/token.json
+      EZVIZ_BRIDGE_DATA_DIR: /data
+    secrets:
+      - api_token
+    volumes:
+      - ./config:/config:ro
+      - ./data:/data
+    ports:
+      - "192.168.90.20:8765:8765"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 512M
+
+secrets:
+  api_token:
+    file: ./secrets/api_token
