@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from base64 import b64encode
 
 import pytest
 from aiohttp import web
@@ -37,6 +38,7 @@ async def test_media_and_metrics_require_exact_bearer(config: BridgeConfig) -> N
         for path in ("/metrics", "/v1/cameras/front-door/snapshot.jpg"):
             response = await client.get(path)
             assert response.status == 401
+            assert response.headers["WWW-Authenticate"] == 'Basic realm="ezviz-vtm-bridge"'
             assert "a" * 16 not in await response.text()
         response = await client.get(
             "/v1/cameras/front-door/snapshot.jpg",
@@ -45,6 +47,12 @@ async def test_media_and_metrics_require_exact_bearer(config: BridgeConfig) -> N
         assert response.status == 200
         assert await response.read() == JPEG
         assert response.headers["Cache-Control"] == "no-store"
+        basic = b64encode(f"homeassistant:{TOKEN}".encode()).decode()
+        response = await client.get(
+            "/v1/cameras/front-door/snapshot.jpg",
+            headers={"Authorization": f"Basic {basic}"},
+        )
+        assert response.status == 200
     finally:
         await client.close()
 

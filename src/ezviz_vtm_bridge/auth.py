@@ -52,6 +52,8 @@ async def authentication_middleware(
     authenticator = request.app[AUTHENTICATOR]
     if not authenticator.accepts(request.headers.get("Authorization")):
         raise web.HTTPUnauthorized(
-            text='{"error":"unauthorized"}', content_type="application/json"
+            text='{"error":"unauthorized"}',
+            content_type="application/json",
+            headers={"WWW-Authenticate": 'Basic realm="ezviz-vtm-bridge"'},
         )
     return await handler(request)
