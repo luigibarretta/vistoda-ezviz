@@ -1,46 +1,133 @@
 # EZVIZ VTM Bridge
 
-Vendor-isolated bridge for modern EZVIZ cameras that expose cloud VTM/VTDU
-media but no usable RTSP listener. It turns one authenticated upstream camera
-session into bounded, authenticated outputs for Home Assistant and SceneTrove.
+Production-oriented media bridge for modern EZVIZ cameras that expose cloud
+VTM/VTDU media but no usable RTSP listener. One authenticated upstream session
+is shared across bounded, authenticated outputs for Home Assistant and
+SceneTrove.
 
-## Outputs
+## Why it exists
 
-- original MPEG-PS (`video/mpeg`) for SceneTrove ingestion;
-- remux-only MPEG-TS (`video/mp2t`) for Home Assistant and generic players;
-- fresh JPEG snapshots;
+Some EZVIZ devices work in the vendor app while offering no accessible LAN
+stream. Embedding the evolving vendor protocol separately in every consumer
+would spread credentials, failure modes and proprietary details. This bridge
+keeps that dependency behind a small, versioned HTTP contract.
+
+It does not transcode video, record continuously, expose an Internet route or
+modify camera firmware.
+
+## Capabilities
+
+- canonical MPEG-PS (`video/mpeg`) for SceneTrove ingestion;
+- copy-remuxed MPEG-TS (`video/mp2t`) for Home Assistant and media clients;
+- fresh JPEG snapshots with short request coalescing;
 - finite MPEG-PS recordings with immutable manifests and SHA-256 digests;
-- health and Prometheus metrics without camera serials, tokens, URLs or media.
+- one lazy upstream shared by multiple bounded consumers;
+- health and Prometheus metrics without serials, tokens, URLs or media.
 
-The bridge does not transcode video, record continuously, or expose an Internet
-route. `pyezvizapi` is the replaceable vendor transport. Consumers depend only
-on the versioned HTTP contract.
+## Architecture
 
-## Development
+```text
+EZVIZ VTM/VTDU
+      |
+      v
+pyezvizapi transport -> bounded raw hub -> MPEG-PS / recordings / snapshots
+                               |
+                               +-> shared FFmpeg copy-remux -> MPEG-TS
+```
+
+`pyezvizapi` is the replaceable vendor adapter. Consumers depend only on
+[`openapi.yaml`](openapi.yaml). Architectural choices and their consequences
+are indexed in [`docs/adr/README.md`](docs/adr/README.md).
+
+## Quick start
+
+Requirements: Docker with Compose, Python 3.12+ with `uv`, a random API token of
+at least 32 characters and the camera serial. Copy the examples, enroll from a
+trusted interactive terminal and keep all real secrets outside Git:
 
 ```bash
-uv sync --all-groups
+install -d -m 0700 config data secrets
+cp deploy/cameras.example.json config/cameras.json
+openssl rand -hex 32 > secrets/api_token
+chmod 600 secrets/api_token
+uv sync --locked
+uv run ezviz-vtm-bridge enroll \
+  --account 'owner@example.com' --token-file data/token.json
+docker compose -f deploy/compose.example.yaml config --quiet
+docker compose -f deploy/compose.example.yaml up -d
+```
+
+Replace the immutable image placeholder and example bind address before running
+Compose. The example documents all required mounts and environment. Enrollment
+reads password and MFA without echo; see [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
+for canaries, monitoring, backup and rollback.
+
+## HTTP contract
+
+| Endpoint | Purpose | Authentication |
+| --- | --- | --- |
+| `GET /healthz` | liveness and version | none |
+| `GET /metrics` | low-cardinality metrics | bearer |
+| `GET /v1/cameras/{camera}/snapshot.jpg` | JPEG snapshot | bearer or Basic |
+| `GET /v1/cameras/{camera}/live.mpegps` | shared MPEG-PS | bearer |
+| `GET /v1/cameras/{camera}/live.ts` | shared MPEG-TS | bearer or Basic |
+| `POST /v1/cameras/{camera}/recordings` | finite capture | bearer |
+
+Basic authentication is reserved for Home Assistant's Generic Camera client:
+the fixed username is `homeassistant` and the API token is the password. The
+authoritative schemas, bounds and responses are in the OpenAPI document.
+
+## Production model
+
+The canonical deployment is an immutable image pinned by tag and digest,
+managed through reviewed Ansible and Portainer configuration. The container
+runs as UID/GID `10001`, with a read-only root filesystem, dropped capabilities,
+bounded memory/processes and only `/data` writable. It has no public Traefik
+route; network access is limited to Home Assistant, SceneTrove and monitoring.
+
+Build tools and runtime dependencies come from the frozen `uv.lock`, are
+verified against package hashes and are installed into the runtime only from
+local wheels. Builder and Python base images are pinned by digest. The
+published image digest is the deployment identity.
+
+## Development and quality gates
+
+Python 3.12+ and `uv` are required:
+
+```bash
+uv sync --locked --all-groups
 uv run ruff check .
 uv run ruff format --check .
 uv run python scripts/check_loc.py
 uv run mypy src
 uv run pytest
+docker build --tag ezviz-vtm-bridge:test .
 ```
 
-No live EZVIZ credentials are required by the test suite. Live canaries are
-separate, opt-in and consume token JSON through standard input.
+Tests are deterministic and require neither network nor EZVIZ credentials.
+Live canaries are separate and opt-in. CI enforces lint, formatting, strict
+typing, branch-aware coverage, image build and a maximum of 300 physical lines
+for every maintained source, configuration and documentation file. Split a
+responsibility instead of adding a LOC exception.
 
-Every human-maintained source, configuration and documentation file has an
-enforced maximum of 300 physical lines. Split responsibilities instead of
-adding exceptions; generated dependency locks are the only excluded content.
-Container builds export the frozen `uv.lock` with package hashes for both build
-tools and runtime dependencies, then install the runtime only from local wheels.
+## Security and operations
 
-See [the implementation plan](docs/PLAN.md), [the threat model](docs/THREAT_MODEL.md)
-and [the ADR index](docs/adr/README.md).
+Never commit credentials, signed URLs, serials, packet captures or video. API
+and EZVIZ session tokens belong in mode-0600 files and must not be passed on a
+command line. See [`SECURITY.md`](SECURITY.md) for disclosure and rotation
+rules, [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for trust boundaries and
+[`docs/OPERATIONS.md`](docs/OPERATIONS.md) for the runbook.
 
-## License
+## Project documentation
 
-Apache-2.0. The project depends on the Apache-2.0 `pyezvizapi` package. The
-LGPL-2.1 LE-EZVIZ-VS project is credited as protocol research only; no source
-is copied from it.
+- [`docs/PLAN.md`](docs/PLAN.md): implementation and verified delivery state;
+- [`docs/RESEARCH.md`](docs/RESEARCH.md): protocol research and provenance;
+- [`docs/adr/README.md`](docs/adr/README.md): architecture decision records;
+- [`deploy/`](deploy): sanitized Compose and camera examples.
+
+## License and notices
+
+Copyright 2026 Luigi Barretta. Licensed under Apache-2.0; see [`LICENSE`](LICENSE)
+and [`NOTICE`](NOTICE). `pyezvizapi` is an Apache-2.0 dependency. The LGPL-2.1
+LE-EZVIZ-VS project is credited as protocol research only; no source is copied
+from it.

@@ -17,4 +17,11 @@ jobs:
       - run: uv run python scripts/check_loc.py
       - run: uv run mypy src
       - run: uv run pytest
-      - run: docker build --tag ezviz-vtm-bridge:test .
+      - run: uv build
+      - run: >-
+          docker build --build-arg VERSION=0.1.0+ci --build-arg REVISION=ci
+          --tag ezviz-vtm-bridge:test .
+      - run: >-
+          docker run --rm --network none --read-only --user 10001:10001
+          --entrypoint python ezviz-vtm-bridge:test
+          -c "import ezviz_vtm_bridge, aiohttp, pyezvizapi"

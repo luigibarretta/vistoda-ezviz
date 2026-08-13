@@ -4,7 +4,7 @@ FROM ghcr.io/astral-sh/uv:0.11.19@sha256:b46b03ddfcfbf8f547af7e9eaefdf8a39c8cebc
 FROM python:3.13.5-slim-bookworm@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419 AS builder
 WORKDIR /build
 COPY --from=uv /uv /usr/local/bin/uv
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md LICENSE NOTICE ./
 COPY src ./src
 RUN uv export --frozen --only-group build --no-emit-project \
       --format requirements-txt --output-file /build-requirements.txt \
@@ -21,8 +21,11 @@ RUN uv export --frozen --only-group build --no-emit-project \
 
 FROM python:3.13.5-slim-bookworm@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419
 ARG VERSION=0.1.0
+ARG REVISION=unknown
 LABEL org.opencontainers.image.title="EZVIZ VTM Bridge" \
       org.opencontainers.image.version=$VERSION \
+      org.opencontainers.image.revision=$REVISION \
+      org.opencontainers.image.source="https://git.luigibarretta.com/luigibarretta/ezviz-vtm-bridge" \
       org.opencontainers.image.licenses="Apache-2.0"
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates ffmpeg \
@@ -31,7 +34,7 @@ RUN apt-get update \
     && useradd --uid 10001 --gid bridge --no-create-home --home-dir /nonexistent bridge
 COPY --from=builder /wheels /wheels
 RUN python -m pip install --no-cache-dir --no-index --find-links=/wheels \
-      "ezviz-vtm-bridge==$VERSION" \
+      "ezviz-vtm-bridge==0.1.0" \
     && rm -rf /wheels
 COPY --chmod=0555 scripts/scenetrove_pull.py /usr/local/bin/scenetrove-pull
 USER 10001:10001

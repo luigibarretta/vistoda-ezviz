@@ -9,6 +9,7 @@ description = "Bounded EZVIZ VTM/VTDU media bridge for Home Assistant and SceneT
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Luigi Barretta" }]
 dependencies = [
   "aiohttp>=3.12.15,<4",
