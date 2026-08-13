@@ -6,8 +6,6 @@ import asyncio
 import hashlib
 import json
 import os
-import tempfile
-from contextlib import suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +15,7 @@ from uuid import uuid4
 from .errors import CapacityError, RecordingError
 from .hub import RawStreamHub
 from .metrics import Metrics
+from .storage import atomic_write_json
 
 PACK_START = b"\x00\x00\x01\xba"
 
@@ -249,18 +248,7 @@ class RecordingManager:
             ],
             "idempotency": dict(sorted(self._idempotency.items())),
         }
-        descriptor, temporary_name = tempfile.mkstemp(prefix=".recordings.", dir=self._directory)
-        try:
-            os.fchmod(descriptor, 0o600)
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                json.dump(payload, handle, separators=(",", ":"), sort_keys=True)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary_name, self._journal)
-        except BaseException:
-            with suppress(FileNotFoundError):
-                os.unlink(temporary_name)
-            raise
+        atomic_write_json(self._journal, payload)
 
     async def close(self) -> None:
         tasks = tuple(self._tasks)

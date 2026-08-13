@@ -13,6 +13,7 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --all-groups
       - run: uv run ruff check .
+      - run: uv run ruff format --check .
       - run: uv run python scripts/check_loc.py
       - run: uv run mypy src
       - run: uv run pytest

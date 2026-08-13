@@ -46,8 +46,10 @@ def test_metrics_are_sorted_and_low_cardinality() -> None:
     metrics.increment("requests_total", "z")
     metrics.increment("requests_total", "a", 2)
     metrics.gauge("active", "a", 1)
+    metrics.gauge("startup_seconds", "a", 0.125)
     assert metrics.render().splitlines() == [
         'ezviz_bridge_requests_total{camera="a"} 2',
         'ezviz_bridge_requests_total{camera="z"} 1',
         'ezviz_bridge_active{camera="a"} 1',
+        'ezviz_bridge_startup_seconds{camera="a"} 0.125',
     ]

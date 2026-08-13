@@ -8,14 +8,13 @@ import logging
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
-from pathlib import Path
 
 from aiohttp import web
 
 from . import __version__
 from .auth import AUTHENTICATOR, ApiAuthenticator, authentication_middleware
 from .config import BridgeConfig, read_secret_file
-from .errors import CapacityError, RecordingError
+from .errors import CameraNotFoundError, CapacityError, RecordingError
 from .metrics import Metrics
 from .recordings import RecordingManager
 from .snapshots import SnapshotService
@@ -46,7 +45,7 @@ async def safe_error_middleware(
         return await handler(request)
     except web.HTTPException:
         raise
-    except KeyError:
+    except CameraNotFoundError:
         raise web.HTTPNotFound(
             text='{"error":"camera_not_found"}', content_type="application/json"
         ) from None
@@ -82,7 +81,7 @@ async def snapshot(request: web.Request) -> web.Response:
     runtime = request.app[RUNTIME]
     alias = request.match_info["camera"]
     if alias not in runtime.config.cameras:
-        raise KeyError(alias)
+        raise CameraNotFoundError(alias)
     image = await runtime.snapshots.get(alias)
     return web.Response(
         body=image,
@@ -96,7 +95,7 @@ async def _stream(request: web.Request, *, mpeg_ts: bool) -> web.StreamResponse:
     alias = request.match_info["camera"]
     hubs = runtime.streams.ts if mpeg_ts else runtime.streams.raw
     if alias not in hubs:
-        raise KeyError(alias)
+        raise CameraNotFoundError(alias)
     response = web.StreamResponse(
         status=200,
         headers={
@@ -222,7 +221,3 @@ def create_app(config: BridgeConfig, transport: CameraTransport) -> web.Applicat
     )
     app.on_cleanup.append(close_runtime)
     return app
-
-
-def token_path_from_config(config: BridgeConfig) -> Path:
-    return config.ezviz_token_file

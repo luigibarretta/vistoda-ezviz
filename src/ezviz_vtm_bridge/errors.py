@@ -9,10 +9,6 @@ class ConfigurationError(BridgeError):
     """Configuration is missing or unsafe."""
 
 
-class AuthenticationError(BridgeError):
-    """A bridge request is not authenticated."""
-
-
 class CameraNotFoundError(BridgeError):
     """A configured camera alias was not found."""
 

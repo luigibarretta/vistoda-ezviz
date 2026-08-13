@@ -37,6 +37,11 @@ segment, then confirm the bridge metrics return `upstream_active`,
 `remux_active`, `raw_subscribers` and `ts_subscribers` to zero after the idle
 grace. A successful JPEG proxy alone does not prove live playback.
 
+For cold-start analysis, compare `upstream_startup_seconds` (VTM request to
+first MPEG-PS chunk) with `remux_startup_seconds` (MPEG-TS subscriber to first
+output chunk). Their difference approximates local FFmpeg startup/probing;
+optimize probe parameters only after repeated real-camera measurements.
+
 ## SceneTrove
 
 SceneTrove uses the finite-capture workflow, never the infinite live endpoint:

@@ -96,8 +96,7 @@ class BridgeConfig:
         if not isinstance(raw_cameras, dict) or not raw_cameras:
             raise ConfigurationError("at least one camera must be configured")
         cameras = {
-            alias: CameraConfig.from_mapping(alias, value)
-            for alias, value in raw_cameras.items()
+            alias: CameraConfig.from_mapping(alias, value) for alias, value in raw_cameras.items()
         }
 
         def integer(name: str, default: int, minimum: int, maximum: int) -> int:

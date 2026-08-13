@@ -40,8 +40,9 @@ credentials, continuously draining the camera battery, or transcoding video.
 
 ## Verified delivery state
 
-- Phases 1–6 passed locally and in the immutable container: Ruff, strict mypy,
-  59 deterministic tests, 90.64% branch coverage and the 300-LOC guard.
+- Phases 1–6 passed locally and in the immutable container: Ruff lint/format,
+  strict mypy, 62 deterministic tests, branch-aware coverage above 91% and the
+  300-LOC guard.
 - Phase 7 passed against the owned CP4: fresh JPEG, H.264/AAC MPEG-PS and
   MPEG-TS, one upstream for simultaneous consumers, teardown and an atomic
   finite SceneTrove import.

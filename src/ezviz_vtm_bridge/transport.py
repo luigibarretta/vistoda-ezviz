@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import io
 import json
-import os
-import tempfile
 import threading
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -18,6 +15,7 @@ from pyezvizapi.exceptions import EzvizAuthVerificationCode
 
 from .config import CameraConfig, read_secret_file
 from .errors import ConfigurationError, StreamStoppedError
+from .storage import atomic_write_json
 
 
 class BinarySink(Protocol):
@@ -119,23 +117,7 @@ class PyezvizTransport:
     @staticmethod
     def _atomic_token_write(path: Path, token: dict[str, Any]) -> None:
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-        try:
-            os.fchmod(descriptor, 0o600)
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                json.dump(token, handle, separators=(",", ":"), sort_keys=True)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary_name, path)
-            directory = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
-        except BaseException:
-            with suppress(FileNotFoundError):
-                os.unlink(temporary_name)
-            raise
+        atomic_write_json(path, token)
 
     def snapshot_jpeg(self, camera: CameraConfig) -> bytes:
         output = io.BytesIO()

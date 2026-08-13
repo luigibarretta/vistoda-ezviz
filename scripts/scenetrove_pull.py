@@ -55,9 +55,7 @@ def request_json(
     return value
 
 
-def write_media(
-    source: BinaryIO, destination: Path, *, max_bytes: int
-) -> tuple[int, str]:
+def write_media(source: BinaryIO, destination: Path, *, max_bytes: int) -> tuple[int, str]:
     descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     digest = hashlib.sha256()
     written = 0

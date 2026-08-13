@@ -19,6 +19,9 @@ dependencies = [
 ezviz-vtm-bridge = "ezviz_vtm_bridge.cli:main"
 
 [dependency-groups]
+build = [
+  "hatchling==1.27.0",
+]
 dev = [
   "mypy>=1.17,<2",
   "pytest>=8.4,<9",

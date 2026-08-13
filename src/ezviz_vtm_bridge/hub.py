@@ -98,9 +98,7 @@ class RawStreamHub:
         return self._run_task is not None and not self._run_task.done()
 
     async def iter_chunks(self) -> AsyncIterator[bytes]:
-        subscriber: asyncio.Queue[bytes | object] = asyncio.Queue(
-            self._subscriber_queue_chunks
-        )
+        subscriber: asyncio.Queue[bytes | object] = asyncio.Queue(self._subscriber_queue_chunks)
         async with self._lock:
             if self._closed:
                 raise RuntimeError("stream hub is closed")
@@ -148,6 +146,8 @@ class RawStreamHub:
         delay = max(0.0, self._next_start - time.monotonic())
         if delay:
             await asyncio.sleep(delay)
+        started = time.monotonic()
+        first_chunk = True
         self._metrics.increment("upstream_starts_total", self.camera.alias)
         self._metrics.gauge("upstream_active", self.camera.alias, 1)
         producer = asyncio.create_task(asyncio.to_thread(self._produce))
@@ -157,6 +157,13 @@ class RawStreamHub:
                 item = await asyncio.to_thread(self._thread_queue.get)
                 if item is _END:
                     break
+                if first_chunk:
+                    self._metrics.gauge(
+                        "upstream_startup_seconds",
+                        self.camera.alias,
+                        round(time.monotonic() - started, 6),
+                    )
+                    first_chunk = False
                 self._publish(item)  # type: ignore[arg-type]
         except asyncio.CancelledError:
             self._stop_event.set()

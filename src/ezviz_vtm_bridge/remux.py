@@ -3,14 +3,45 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator
 from contextlib import suppress
+from typing import Final
 
-from .errors import CapacityError, ConfigurationError
+from .errors import CapacityError
 from .hub import RawStreamHub, _force_end
 from .metrics import Metrics
 
 _END = object()
+_REMUX_ARGUMENTS: Final = (
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-analyzeduration",
+    "500000",
+    "-probesize",
+    "1000000",
+    "-fflags",
+    "+genpts+nobuffer",
+    "-f",
+    "mpeg",
+    "-i",
+    "pipe:0",
+    "-map",
+    "0:v:0?",
+    "-map",
+    "0:a:0?",
+    "-c",
+    "copy",
+    "-muxdelay",
+    "0",
+    "-flush_packets",
+    "1",
+    "-f",
+    "mpegts",
+    "pipe:1",
+)
+ProcessPipes = tuple[asyncio.StreamWriter, asyncio.StreamReader, asyncio.StreamReader]
 
 
 class MpegTsHub:
@@ -78,47 +109,34 @@ class MpegTsHub:
             return
 
     async def _run(self) -> None:
-        process = await asyncio.create_subprocess_exec(
-            self._ffmpeg,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-analyzeduration",
-            "500000",
-            "-probesize",
-            "1000000",
-            "-fflags",
-            "+genpts+nobuffer",
-            "-f",
-            "mpeg",
-            "-i",
-            "pipe:0",
-            "-map",
-            "0:v:0?",
-            "-map",
-            "0:a:0?",
-            "-c",
-            "copy",
-            "-muxdelay",
-            "0",
-            "-flush_packets",
-            "1",
-            "-f",
-            "mpegts",
-            "pipe:1",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        started = time.monotonic()
+        process = await self._start_process()
+        if process is None:
+            return
         self._metrics.increment("remux_starts_total", self.camera.alias)
         self._metrics.gauge("remux_active", self.camera.alias, 1)
+        pipes = await self._validated_pipes(process)
+        if pipes is None:
+            return
+        await self._relay(process, pipes, started)
+
+    async def _validated_pipes(self, process: asyncio.subprocess.Process) -> ProcessPipes | None:
         if process.stdin is None or process.stdout is None or process.stderr is None:
             process.kill()
             await process.wait()
-            raise ConfigurationError("FFmpeg pipes are unavailable")
-        stdin = process.stdin
-        stdout = process.stdout
-        stderr = process.stderr
+            self._metrics.increment("remux_failures_total", self.camera.alias)
+            self._metrics.gauge("remux_active", self.camera.alias, 0)
+            self._finish_subscribers()
+            return None
+        return process.stdin, process.stdout, process.stderr
+
+    async def _relay(
+        self,
+        process: asyncio.subprocess.Process,
+        pipes: ProcessPipes,
+        started: float,
+    ) -> None:
+        stdin, stdout, stderr = pipes
 
         async def feed() -> None:
             try:
@@ -129,7 +147,15 @@ class MpegTsHub:
                 stdin.close()
 
         async def distribute() -> None:
+            first_chunk = True
             while chunk := await stdout.read(64 * 1024):
+                if first_chunk:
+                    self._metrics.gauge(
+                        "remux_startup_seconds",
+                        self.camera.alias,
+                        round(time.monotonic() - started, 6),
+                    )
+                    first_chunk = False
                 self._publish(chunk)
 
         async def discard_stderr() -> None:
@@ -144,6 +170,8 @@ class MpegTsHub:
                 self._metrics.increment("remux_failures_total", self.camera.alias)
         except asyncio.CancelledError:
             raise
+        except Exception:  # noqa: BLE001 - process failures are reduced to metrics
+            self._metrics.increment("remux_failures_total", self.camera.alias)
         finally:
             for task in tasks:
                 task.cancel()
@@ -157,6 +185,20 @@ class MpegTsHub:
                     await process.wait()
             self._metrics.gauge("remux_active", self.camera.alias, 0)
             self._finish_subscribers()
+
+    async def _start_process(self) -> asyncio.subprocess.Process | None:
+        try:
+            return await asyncio.create_subprocess_exec(
+                self._ffmpeg,
+                *_REMUX_ARGUMENTS,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except OSError:
+            self._metrics.increment("remux_failures_total", self.camera.alias)
+            self._finish_subscribers()
+            return None
 
     def _publish(self, chunk: bytes) -> None:
         slow: list[asyncio.Queue[bytes | object]] = []

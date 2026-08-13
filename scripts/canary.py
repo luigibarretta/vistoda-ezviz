@@ -35,9 +35,7 @@ def main() -> None:
     base = arguments.base_url.rstrip("/")
     image = b""
     if not arguments.skip_snapshot:
-        with request(
-            f"{base}/v1/cameras/{arguments.camera}/snapshot.jpg", token, 30
-        ) as result:
+        with request(f"{base}/v1/cameras/{arguments.camera}/snapshot.jpg", token, 30) as result:
             image = result.read(16 * 1024 * 1024 + 1)
         if len(image) > 16 * 1024 * 1024 or not image.startswith(b"\xff\xd8\xff"):
             raise SystemExit("snapshot validation failed")
@@ -82,12 +80,18 @@ def main() -> None:
         streams = json.loads(probe.stdout).get("streams", [])
         if not any(stream.get("codec_type") == "video" for stream in streams):
             raise SystemExit("ffprobe found no video stream")
-    sys.stdout.write(json.dumps({
-        "status": "ok",
-        "snapshot_bytes": len(image),
-        "stream_bytes": total,
-        "streams": streams,
-    }, sort_keys=True) + "\n")
+    sys.stdout.write(
+        json.dumps(
+            {
+                "status": "ok",
+                "snapshot_bytes": len(image),
+                "stream_bytes": total,
+                "streams": streams,
+            },
+            sort_keys=True,
+        )
+        + "\n"
+    )
 
 
 if __name__ == "__main__":

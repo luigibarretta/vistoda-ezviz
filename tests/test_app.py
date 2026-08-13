@@ -7,7 +7,7 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from ezviz_vtm_bridge.app import create_app, safe_error_middleware, token_path_from_config
+from ezviz_vtm_bridge.app import create_app, safe_error_middleware
 from ezviz_vtm_bridge.config import BridgeConfig
 from ezviz_vtm_bridge.errors import CapacityError
 
@@ -170,10 +170,6 @@ async def test_safe_error_middleware_reduces_internal_failures() -> None:
     with pytest.raises(web.HTTPInternalServerError) as internal_error:
         await safe_error_middleware(request, unexpected)  # type: ignore[arg-type]
     assert internal_error.value.text == '{"error":"internal_error"}'
-
-
-def test_token_path_helper(config: BridgeConfig) -> None:
-    assert token_path_from_config(config) == config.ezviz_token_file
 
 
 @pytest.mark.parametrize(

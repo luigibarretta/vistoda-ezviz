@@ -12,13 +12,13 @@ class Metrics:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._counters: dict[tuple[str, str], int] = defaultdict(int)
-        self._gauges: dict[tuple[str, str], int] = defaultdict(int)
+        self._gauges: dict[tuple[str, str], int | float] = {}
 
     def increment(self, name: str, camera: str, value: int = 1) -> None:
         with self._lock:
             self._counters[(name, camera)] += value
 
-    def gauge(self, name: str, camera: str, value: int) -> None:
+    def gauge(self, name: str, camera: str, value: int | float) -> None:
         with self._lock:
             self._gauges[(name, camera)] = value
 

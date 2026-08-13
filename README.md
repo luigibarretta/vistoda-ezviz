@@ -21,6 +21,7 @@ on the versioned HTTP contract.
 ```bash
 uv sync --all-groups
 uv run ruff check .
+uv run ruff format --check .
 uv run python scripts/check_loc.py
 uv run mypy src
 uv run pytest
@@ -32,6 +33,8 @@ separate, opt-in and consume token JSON through standard input.
 Every human-maintained source, configuration and documentation file has an
 enforced maximum of 300 physical lines. Split responsibilities instead of
 adding exceptions; generated dependency locks are the only excluded content.
+Container builds export the frozen `uv.lock` with package hashes for both build
+tools and runtime dependencies, then install the runtime only from local wheels.
 
 See [the implementation plan](docs/PLAN.md), [the threat model](docs/THREAT_MODEL.md)
 and [the ADR index](docs/adr/README.md).

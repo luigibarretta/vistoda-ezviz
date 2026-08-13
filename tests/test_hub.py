@@ -147,9 +147,14 @@ def fake_ffmpeg(tmp_path: Path) -> str:
     return str(script)
 
 
-async def test_mpeg_ts_consumers_share_one_remux(
-    tmp_path: Path, camera: CameraConfig
-) -> None:
+def failed_ffmpeg(tmp_path: Path) -> str:
+    script = tmp_path / "failed-ffmpeg"
+    script.write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
+    script.chmod(0o755)
+    return str(script)
+
+
+async def test_mpeg_ts_consumers_share_one_remux(tmp_path: Path, camera: CameraConfig) -> None:
     transport = FakeTransport()
     metrics = Metrics()
     raw = RawStreamHub(
@@ -172,14 +177,15 @@ async def test_mpeg_ts_consumers_share_one_remux(
     first, second = await asyncio.gather(take(ts, 4), take(ts, 4))  # type: ignore[arg-type]
     assert first and second
     assert transport.starts == 1
-    assert "remux_starts_total" in metrics.render()
+    rendered = metrics.render()
+    assert "remux_starts_total" in rendered
+    assert "upstream_startup_seconds" in rendered
+    assert "remux_startup_seconds" in rendered
     await ts.close()
     await raw.close()
 
 
-async def test_mpeg_ts_capacity_and_idle_shutdown(
-    tmp_path: Path, camera: CameraConfig
-) -> None:
+async def test_mpeg_ts_capacity_and_idle_shutdown(tmp_path: Path, camera: CameraConfig) -> None:
     transport = FakeTransport(interval=0.01)
     metrics = Metrics()
     raw = make_hub(camera, transport)
@@ -198,7 +204,7 @@ async def test_mpeg_ts_capacity_and_idle_shutdown(
         await anext(other)
     await iterator.aclose()
     await asyncio.sleep(0.05)
-    assert "ezviz_bridge_remux_active{camera=\"front-door\"} 0" in metrics.render()
+    assert 'ezviz_bridge_remux_active{camera="front-door"} 0' in metrics.render()
     await ts.close()
     await raw.close()
 
@@ -224,3 +230,39 @@ async def test_failed_upstream_finishes_subscribers_and_records_failure(
     assert await take(hub, 1) == []
     assert "upstream_failures_total" in metrics.render()
     await hub.close()
+
+
+async def test_missing_ffmpeg_finishes_subscriber_without_hanging(
+    tmp_path: Path, camera: CameraConfig
+) -> None:
+    metrics = Metrics()
+    raw = make_hub(camera, FakeTransport())
+    ts = MpegTsHub(
+        raw,
+        metrics,
+        ffmpeg_path=str(tmp_path / "missing-ffmpeg"),
+        subscriber_queue_chunks=4,
+        max_subscribers=1,
+        idle_grace_seconds=0,
+    )
+    assert await asyncio.wait_for(take(ts, 1), timeout=1) == []  # type: ignore[arg-type]
+    assert "remux_failures_total" in metrics.render()
+    await ts.close()
+    await raw.close()
+
+
+async def test_failed_ffmpeg_is_reduced_to_metric(tmp_path: Path, camera: CameraConfig) -> None:
+    metrics = Metrics()
+    raw = make_hub(camera, FakeTransport())
+    ts = MpegTsHub(
+        raw,
+        metrics,
+        ffmpeg_path=failed_ffmpeg(tmp_path),
+        subscriber_queue_chunks=4,
+        max_subscribers=1,
+        idle_grace_seconds=0,
+    )
+    assert await asyncio.wait_for(take(ts, 1), timeout=1) == []  # type: ignore[arg-type]
+    assert "remux_failures_total" in metrics.render()
+    await ts.close()
+    await raw.close()
