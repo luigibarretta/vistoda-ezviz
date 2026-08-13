@@ -138,6 +138,6 @@ class BridgeConfig:
             recording_quota_bytes=integer(
                 "EZVIZ_BRIDGE_RECORDING_QUOTA_BYTES", 2 * 1024 * 1024 * 1024, 1024 * 1024, 2**40
             ),
-            snapshot_cache_seconds=number("EZVIZ_BRIDGE_SNAPSHOT_CACHE", 3, 0, 30),
+            snapshot_cache_seconds=number("EZVIZ_BRIDGE_SNAPSHOT_CACHE", 3, 0, 300),
             snapshot_stale_seconds=number("EZVIZ_BRIDGE_SNAPSHOT_STALE", 900, 30, 3600),
         )
