@@ -46,12 +46,16 @@ credentials, continuously draining the camera battery, or transcoding video.
 - The recording contract is OpenAPI 1.1: SceneTrove commits and verifies local
   media before idempotent `DELETE`; a durable receipt closes the crash window
   and bounded tombstones preserve retry behavior across bridge restarts.
-- Phase 7 passed previously against the owned CP4 for the Python oracle: fresh
-  JPEG, H.264/AAC MPEG-PS and MPEG-TS, fan-out, teardown and finite import. The
-  Rust candidate must repeat those live checks before replacing it.
-- Phase 8 remains on the previously verified immutable Python image until the
-  Rust canary and rollback rehearsal pass; the exact post-cutover digest is
-  recorded here and in infrastructure as code at release.
+- Phases 7–8 passed against the owned CP4 on the native Rust release: fresh
+  JPEG, H.264/AAC MPEG-PS and MPEG-TS, single-upstream fan-out, teardown, Home
+  Assistant HLS and a finite SceneTrove import all completed successfully.
+- Production runs commit `37d757b055cfe2a7323eee7b4e9c7ec1722b454b`
+  at manifest digest `sha256:931a8c4564a9d9c8f2284e936c2b0d2cd35aa6e34820d75cd54cf2e4d2b71688`.
+  The deployed container is healthy, rootless, read-only and has zero restarts.
+- The final SceneTrove canary proved the ordering invariant: verify and fsync
+  the local file, persist the recovery receipt, then issue idempotent `DELETE`.
+  The bridge spool and adapter receipt set were both empty afterward; the
+  durable ACK tombstone survived the transaction.
 - The dedicated EZVIZ enrollment session is encrypted in the infrastructure
   vault; its plaintext enrollment artifact was securely removed after import.
 - Home Assistant uses the supported Generic Camera flow as
@@ -60,5 +64,8 @@ credentials, continuously draining the camera battery, or transcoding video.
 - SceneTrove imported and validated one bounded 15-second H.264/AAC capture.
   Its immutable pull unit remains disabled and is invoked explicitly, so no
   background schedule drains the doorbell battery.
+- The optimized cold-start canary measured 6.72 seconds to first upstream
+  MPEG-PS bytes and 10.81 seconds to first remuxed MPEG-TS bytes; both pipelines
+  returned to zero active consumers after teardown.
 - The production listener is private and source-filtered to its declared
   Home Assistant, SceneTrove and management consumers. No public route exists.
