@@ -24,11 +24,13 @@ class SnapshotService:
         transport: CameraTransport,
         metrics: Metrics,
         cache_seconds: float,
+        stale_seconds: float,
     ) -> None:
         self._cameras = cameras
         self._transport = transport
         self._metrics = metrics
         self._cache_seconds = cache_seconds
+        self._stale_seconds = stale_seconds
         self._cache: dict[str, CachedSnapshot] = {}
         self._locks = {alias: asyncio.Lock() for alias in cameras}
 
@@ -45,7 +47,15 @@ class SnapshotService:
             if cached and now - cached.created_monotonic <= self._cache_seconds:
                 self._metrics.increment("snapshot_cache_hits_total", alias)
                 return cached.data
-            image = await asyncio.to_thread(self._transport.snapshot_jpeg, camera)
+            try:
+                image = await asyncio.to_thread(self._transport.snapshot_jpeg, camera)
+            except Exception:
+                cached = self._cache.get(alias)
+                age = time.monotonic() - cached.created_monotonic if cached else float("inf")
+                if cached and age <= self._stale_seconds:
+                    self._metrics.increment("snapshot_stale_fallbacks_total", alias)
+                    return cached.data
+                raise
             self._cache[alias] = CachedSnapshot(image, time.monotonic())
             self._metrics.increment("snapshots_total", alias)
             return image

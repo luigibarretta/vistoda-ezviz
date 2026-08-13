@@ -194,6 +194,7 @@ def create_app(config: BridgeConfig, transport: CameraTransport) -> web.Applicat
             transport,
             metrics_store,
             config.snapshot_cache_seconds,
+            config.snapshot_stale_seconds,
         ),
         recordings=RecordingManager(
             config.data_dir / "recordings",

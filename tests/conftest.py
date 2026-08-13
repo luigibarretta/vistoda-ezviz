@@ -35,6 +35,7 @@ def config(tmp_path: Path, camera: CameraConfig) -> BridgeConfig:
         max_recording_bytes=1024 * 1024,
         recording_quota_bytes=2 * 1024 * 1024,
         snapshot_cache_seconds=2,
+        snapshot_stale_seconds=900,
     )
 
 
