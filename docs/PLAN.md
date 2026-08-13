@@ -41,11 +41,20 @@ credentials, continuously draining the camera battery, or transcoding video.
 ## Verified delivery state
 
 - Phases 1–6 passed locally and in the immutable container: Ruff, strict mypy,
-  58 deterministic tests, 90% branch coverage and the 300-LOC guard.
+  59 deterministic tests, 90.64% branch coverage and the 300-LOC guard.
 - Phase 7 passed against the owned CP4: fresh JPEG, H.264/AAC MPEG-PS and
   MPEG-TS, one upstream for simultaneous consumers, teardown and an atomic
   finite SceneTrove import.
-- Production image, Portainer Compose, source-filtered firewall policy,
-  Home Assistant config-flow reconciler and SceneTrove pull unit are prepared.
-- Activation remains fail-closed until a dedicated EZVIZ enrollment token is
-  created; the existing Home Assistant session is never reused.
+- Phase 8 is active in production from immutable image
+  `b49c6067d1f960af27cccb23c663d46c986602b0` at digest
+  `sha256:92d9a77cfa74c19698183fbf34a1eaf53a99b9abb35afd7a1028fbb67a93f685`.
+- The dedicated EZVIZ enrollment session is encrypted in the infrastructure
+  vault; its plaintext enrollment artifact was securely removed after import.
+- Home Assistant uses the supported Generic Camera flow as
+  `camera.ezviz_cp4_vtm`. Both the proxied JPEG and a real HLS media segment
+  were verified, followed by zero upstream and remux activity after teardown.
+- SceneTrove imported and validated one bounded 15-second H.264/AAC capture.
+  Its immutable pull unit remains disabled and is invoked explicitly, so no
+  background schedule drains the doorbell battery.
+- The production listener is private and source-filtered to its declared
+  Home Assistant, SceneTrove and management consumers. No public route exists.

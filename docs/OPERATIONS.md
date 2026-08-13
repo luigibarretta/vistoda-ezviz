@@ -31,6 +31,12 @@ Keep the official EZVIZ integration for battery, PIR, alarm and configuration
 entities. The bridge camera is media-only. Do not expose the service through a
 public Traefik router.
 
+After reconciliation, verify playback through Home Assistant's supported
+`camera/stream` WebSocket command. Fetch a bounded HLS playlist and one media
+segment, then confirm the bridge metrics return `upstream_active`,
+`remux_active`, `raw_subscribers` and `ts_subscribers` to zero after the idle
+grace. A successful JPEG proxy alone does not prove live playback.
+
 ## SceneTrove
 
 SceneTrove uses the finite-capture workflow, never the infinite live endpoint:
