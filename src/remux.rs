@@ -194,6 +194,7 @@ impl MpegTsHub {
         }
         self.metrics.gauge("remux_active", &self.alias, 0.0).await;
         lock(&self.subscribers).clear();
+        self.metrics.gauge("ts_subscribers", &self.alias, 0.0).await;
     }
 
     async fn run_process(

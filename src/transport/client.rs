@@ -154,9 +154,9 @@ impl EzvizTransport {
             .get("streamBizUrl")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        let server = self
-            .api_json(Method::GET, &format!("/v3/streaming/vtm/{serial}/1"), &[])
-            .await?;
+        let server_path = format!("/v3/streaming/vtm/{serial}/1");
+        let server_request = self.api_json(Method::GET, &server_path, &[]);
+        let (server, vtdu) = tokio::try_join!(server_request, self.vtdu_token())?;
         let server = server
             .get("streamServerConfig")
             .or_else(|| page.get("VTM").and_then(|value| value.get(&resource_id)))
@@ -166,7 +166,6 @@ impl EzvizTransport {
             .find_map(|key| server.get(*key).and_then(Value::as_str))
             .ok_or_else(|| BridgeError::Upstream("VTM server host is missing".into()))?;
         let port = value_u16(server.get("port"))?;
-        let vtdu = self.vtdu_token().await?;
         Ok(build_vtm_url(
             host,
             port,

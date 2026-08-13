@@ -259,6 +259,10 @@ async fn run_producer(inner: Arc<RawInner>, cancel: CancellationToken) {
         .gauge("upstream_active", &inner.alias, 0.0)
         .await;
     lock(&inner.subscribers).clear();
+    inner
+        .metrics
+        .gauge("raw_subscribers", &inner.alias, 0.0)
+        .await;
 }
 
 fn lock<T>(mutex: &StdMutex<T>) -> MutexGuard<'_, T> {
