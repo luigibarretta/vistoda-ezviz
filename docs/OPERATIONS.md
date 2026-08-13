@@ -46,6 +46,13 @@ SceneTrove uses the finite-capture workflow, never the infinite live endpoint:
 The consumer must retain its idempotency key until import succeeds. AI analysis
 remains governed by the SceneTrove device policy; the bridge never enables it.
 
+The production image also contains the reference adapter at
+`/usr/local/bin/scenetrove-pull`. Run that same immutable image with its
+entrypoint overridden, a read-only API-token mount, and only the destination
+device folder writable. The adapter rejects redirects and credential-bearing
+URLs, bounds all responses, verifies the MPEG-PS pack prefix, byte count and
+SHA-256, then atomically publishes the finished file.
+
 ## Canary and rollback
 
 Run a short, bounded canary with the API token on standard input:

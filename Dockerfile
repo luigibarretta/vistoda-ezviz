@@ -17,6 +17,7 @@ RUN apt-get update \
     && useradd --uid 10001 --gid bridge --no-create-home --home-dir /nonexistent bridge
 COPY --from=builder /wheels /wheels
 RUN python -m pip install --no-cache-dir /wheels/*.whl && rm -rf /wheels
+COPY --chmod=0555 scripts/scenetrove_pull.py /usr/local/bin/scenetrove-pull
 USER 10001:10001
 WORKDIR /app
 EXPOSE 8765
