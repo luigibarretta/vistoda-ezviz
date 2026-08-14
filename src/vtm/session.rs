@@ -45,11 +45,11 @@ impl VtmSession {
                 timeout: timeout_duration,
             };
             session.start(redirect_key.as_deref()).await?;
-            if session.info.result.unwrap_or_default() != 0 {
+            if let Some(result) = session.info.result.filter(|result| *result != 0) {
                 let Some(url) = session.info.redirect_url.clone() else {
-                    return Err(BridgeError::Upstream(
-                        "VTM stream request was rejected".into(),
-                    ));
+                    return Err(BridgeError::Upstream(format!(
+                        "VTM stream request was rejected with result {result}"
+                    )));
                 };
                 let Some(key) = session.info.redirect_key.clone() else {
                     return Err(BridgeError::Upstream("VTM redirect omitted its key".into()));
