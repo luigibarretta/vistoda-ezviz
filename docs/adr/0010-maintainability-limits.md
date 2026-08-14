@@ -5,8 +5,10 @@
 
 ## Decision
 
-Every human-maintained Rust, Python, Markdown, YAML, TOML, JSON and Dockerfile in the
-repository is limited to 300 physical lines. The guard runs locally and in CI.
+Every human-maintained Rust, Markdown, YAML, TOML, JSON and Dockerfile in the
+repository is limited to 300 physical lines. A dedicated Rust test enforces the
+guard locally and in CI and rejects Python source files, keeping operational
+tooling under the same Rust-only boundary as the product.
 Generated dependency lock files and tool caches are excluded; production files
 do not receive one-off exemptions. Rustfmt and Clippy are deterministic and
 checked in CI alongside tests and the RustSec audit.

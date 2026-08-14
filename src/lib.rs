@@ -2,6 +2,7 @@
 
 pub mod api;
 pub mod auth;
+pub mod canary;
 pub mod cli;
 pub mod config;
 pub mod error;

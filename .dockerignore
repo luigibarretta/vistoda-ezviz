@@ -1,14 +1,5 @@
 .git
-.coverage
-.pytest_cache
-.mypy_cache
-.ruff_cache
-.venv
 target
-__pycache__
 data
 secrets
 tests
-legacy
-pyproject.toml
-uv.lock

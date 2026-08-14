@@ -75,7 +75,7 @@ unknown and previously acknowledged IDs return `204` by design.
 Run a short, bounded canary with the API token on standard input:
 
 ```bash
-printf '%s\n' "$BRIDGE_CANARY_TOKEN" | scripts/canary.py \
+printf '%s\n' "$BRIDGE_CANARY_TOKEN" | ezviz-vtm-bridge canary \
   --base-url http://BRIDGE:8765 --camera front-door --seconds 20
 ```
 

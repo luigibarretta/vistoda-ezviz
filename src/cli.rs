@@ -8,6 +8,7 @@ use clap::{Parser, Subcommand};
 
 use crate::{
     api::{Runtime, router},
+    canary::{CanaryOptions, run as run_canary},
     config::BridgeConfig,
     error::BridgeError,
     transport::{EzvizTransport, enroll},
@@ -24,6 +25,7 @@ pub struct Arguments {
 enum Command {
     Serve,
     Healthcheck,
+    Canary(CanaryOptions),
     Enroll {
         #[arg(long)]
         account: String,
@@ -40,6 +42,10 @@ pub async fn run() -> Result<(), BridgeError> {
     match Arguments::parse().command {
         Command::Serve => serve().await,
         Command::Healthcheck => healthcheck().await,
+        Command::Canary(options) => run_canary(options).await.map_err(|error| {
+            tracing::error!(detail = %error, "canary failed");
+            error
+        }),
         Command::Enroll {
             account,
             api_region,

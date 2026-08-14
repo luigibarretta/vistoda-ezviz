@@ -35,8 +35,9 @@ native Rust transport -> bounded raw hub -> MPEG-PS / recordings / snapshots
                               +-> shared FFmpeg copy-remux -> MPEG-TS
 ```
 
-The transport implements the required VTM/VTDU wire subset directly in safe
-Rust; no Python or vendor SDK is present at runtime. Consumers depend only on
+The transport and operational tooling implement the required VTM/VTDU wire
+subset directly in safe Rust; no Python source or vendor SDK is present.
+Consumers depend only on
 [`openapi.yaml`](openapi.yaml). Architectural choices and consequences are
 indexed in [`docs/adr/README.md`](docs/adr/README.md).
 
@@ -98,9 +99,9 @@ Rust 1.88+ and Docker are required:
 ```bash
 cargo fmt --all -- --check
 cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo test --locked --test loc_budget
 cargo test --locked --all-targets
 cargo audit --deny warnings
-python3 scripts/check_loc.py
 docker build --tag ezviz-vtm-bridge:test .
 ```
 
@@ -108,7 +109,8 @@ Tests are deterministic and require neither network nor EZVIZ credentials.
 Live canaries are separate and opt-in. CI enforces formatting, strict Clippy,
 tests, RustSec audit, image build and a maximum of 300 physical lines for every
 maintained source, configuration and documentation file. Split a responsibility
-instead of adding a LOC exception.
+instead of adding a LOC exception. A repository test also rejects any future
+Python source so the Rust-only boundary cannot silently regress.
 
 ## Security and operations
 

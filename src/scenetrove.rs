@@ -236,7 +236,7 @@ async fn acknowledge(
     Ok(())
 }
 
-fn validated_base_url(value: &str) -> Result<Url, BridgeError> {
+pub(crate) fn validated_base_url(value: &str) -> Result<Url, BridgeError> {
     let mut url = Url::parse(value)
         .map_err(|_| BridgeError::Configuration("base URL must be absolute HTTP(S)".into()))?;
     if !matches!(url.scheme(), "http" | "https")
@@ -254,7 +254,7 @@ fn validated_base_url(value: &str) -> Result<Url, BridgeError> {
     }
     Ok(url)
 }
-fn encode_segment(value: &str) -> String {
+pub(crate) fn encode_segment(value: &str) -> String {
     url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
 }
 #[cfg(test)]
