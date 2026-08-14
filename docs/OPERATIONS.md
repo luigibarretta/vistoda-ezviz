@@ -55,6 +55,11 @@ duration is controlled by `EZVIZ_BRIDGE_MAX_RECORDING_SECONDS`. After the final
 live subscriber disconnects, verify subscriber and upstream metrics return to
 zero once the idle grace expires.
 
+The MPEG-TS relay repeats transport and H.264 codec headers at keyframes and
+retains one keyframe-aligned warm segment bounded to 8 MiB. A canary must attach
+a second client after the first has already been streaming long enough to pass
+the initial GOP; both clients must decode video and audio.
+
 ## SceneTrove
 
 SceneTrove uses the bounded live endpoint for interactive viewing and the

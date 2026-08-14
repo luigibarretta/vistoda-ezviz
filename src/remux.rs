@@ -21,34 +21,12 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{error::BridgeError, hub::RawStreamHub, metrics::Metrics};
 
-const ARGUMENTS: &[&str] = &[
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-analyzeduration",
-    "500000",
-    "-probesize",
-    "1000000",
-    "-fflags",
-    "+genpts+nobuffer",
-    "-f",
-    "mpeg",
-    "-i",
-    "pipe:0",
-    "-map",
-    "0:v:0?",
-    "-map",
-    "0:a:0?",
-    "-c",
-    "copy",
-    "-muxdelay",
-    "0",
-    "-flush_packets",
-    "1",
-    "-f",
-    "mpegts",
-    "pipe:1",
-];
+#[path = "remux_args.rs"]
+mod args;
+#[path = "remux_warm.rs"]
+mod warm;
+use args::ARGUMENTS;
+use warm::TsWarmCache;
 
 pub struct TsSubscription {
     pub id: u64,
@@ -75,6 +53,7 @@ pub struct MpegTsHub {
     metrics: Metrics,
     ffmpeg: PathBuf,
     subscribers: Arc<StdMutex<BTreeMap<u64, mpsc::Sender<Bytes>>>>,
+    warm: Arc<StdMutex<TsWarmCache>>,
     producer: StdMutex<Option<Producer>>,
     next_id: AtomicU64,
     queue_chunks: usize,
@@ -100,6 +79,7 @@ impl MpegTsHub {
             metrics,
             ffmpeg,
             subscribers: Arc::new(StdMutex::new(BTreeMap::new())),
+            warm: Arc::new(StdMutex::new(TsWarmCache::default())),
             producer: StdMutex::new(None),
             next_id: AtomicU64::new(1),
             queue_chunks,
@@ -121,6 +101,12 @@ impl MpegTsHub {
                 return Err(BridgeError::Capacity(
                     "maximum MPEG-TS subscribers reached".into(),
                 ));
+            }
+            let snapshot = { lock(&self.warm).snapshot() };
+            if let Some(snapshot) = snapshot {
+                sender.try_send(snapshot).map_err(|_| {
+                    BridgeError::Upstream("MPEG-TS warm cache delivery failed".into())
+                })?;
             }
             subscribers.insert(id, sender);
             subscribers.len()
@@ -194,6 +180,7 @@ impl MpegTsHub {
         }
         self.metrics.gauge("remux_active", &self.alias, 0.0).await;
         lock(&self.subscribers).clear();
+        lock(&self.warm).clear();
         self.metrics.gauge("ts_subscribers", &self.alias, 0.0).await;
     }
 
@@ -256,7 +243,11 @@ impl MpegTsHub {
                     .await;
                 first_chunk = false;
             }
-            publish(&self.subscribers, &Bytes::copy_from_slice(&buffer[..read]));
+            publish(
+                &self.subscribers,
+                &self.warm,
+                &Bytes::copy_from_slice(&buffer[..read]),
+            );
         };
         cancel.cancel();
         let raw_id = feed.await??;
@@ -274,11 +265,18 @@ impl MpegTsHub {
             let _result = producer.task.await;
         }
         lock(&self.subscribers).clear();
+        lock(&self.warm).clear();
     }
 }
 
-fn publish(subscribers: &StdMutex<BTreeMap<u64, mpsc::Sender<Bytes>>>, chunk: &Bytes) {
-    lock(subscribers).retain(|_, sender| sender.try_send(chunk.clone()).is_ok());
+fn publish(
+    subscribers: &StdMutex<BTreeMap<u64, mpsc::Sender<Bytes>>>,
+    warm: &StdMutex<TsWarmCache>,
+    chunk: &Bytes,
+) {
+    let mut subscribers = lock(subscribers);
+    lock(warm).ingest(chunk);
+    subscribers.retain(|_, sender| sender.try_send(chunk.clone()).is_ok());
 }
 
 fn lock<T>(mutex: &StdMutex<T>) -> MutexGuard<'_, T> {
