@@ -32,10 +32,10 @@ impl RecordingManager {
         }
         if let Err(error) = self.persist(&state) {
             tracing::error!(
+                error = %error,
                 error_type = "recording_journal",
                 "recording journal persist failed"
             );
-            let _ignored = error;
         }
     }
 

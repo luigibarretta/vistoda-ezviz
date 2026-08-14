@@ -8,8 +8,7 @@ async fn main() {
         )
         .init();
     if let Err(error) = ezviz_vtm_bridge::cli::run().await {
-        tracing::error!(error_type = "fatal", "bridge stopped");
-        let _ignored = error;
+        tracing::error!(error = %error, error_type = "fatal", "bridge stopped");
         std::process::exit(1);
     }
 }
