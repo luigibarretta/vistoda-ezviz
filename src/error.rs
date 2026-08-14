@@ -32,6 +32,42 @@ pub enum BridgeError {
 
 impl BridgeError {
     #[must_use]
+    pub(crate) const fn diagnostic_code(&self) -> &'static str {
+        match self {
+            Self::Configuration(_) => "configuration",
+            Self::Authentication => "authentication",
+            Self::CameraNotFound => "camera_not_found",
+            Self::Capacity(_) => "capacity",
+            Self::Recording(_) => "recording",
+            Self::RecordingActive => "recording_active",
+            Self::Upstream(_) => "upstream",
+            Self::UpstreamUnavailable => "upstream_unavailable",
+            Self::Io(_) => "io",
+            Self::Http(_) => "http",
+            Self::Json(_) => "json",
+            Self::Task(_) => "task",
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn diagnostic_detail(&self) -> &str {
+        match self {
+            Self::Configuration(detail)
+            | Self::Capacity(detail)
+            | Self::Recording(detail)
+            | Self::Upstream(detail) => detail,
+            Self::Authentication => "authentication failed",
+            Self::CameraNotFound => "camera not found",
+            Self::RecordingActive => "recording active",
+            Self::UpstreamUnavailable => "upstream media unavailable",
+            Self::Io(_) => "I/O failure",
+            Self::Http(_) => "HTTP transport failure",
+            Self::Json(_) => "JSON decoding failure",
+            Self::Task(_) => "task failure",
+        }
+    }
+
+    #[must_use]
     pub fn public_response(&self) -> (StatusCode, Value) {
         match self {
             Self::Authentication => (StatusCode::UNAUTHORIZED, json!({"error":"unauthorized"})),
@@ -57,26 +93,9 @@ impl BridgeError {
 impl IntoResponse for BridgeError {
     fn into_response(self) -> axum::response::Response {
         if !matches!(self, Self::Authentication | Self::CameraNotFound) {
-            tracing::error!(error_type = error_kind(&self), "request failed");
+            tracing::error!(error_type = self.diagnostic_code(), "request failed");
         }
         let (status, value) = self.public_response();
         (status, Json(value)).into_response()
-    }
-}
-
-const fn error_kind(error: &BridgeError) -> &'static str {
-    match error {
-        BridgeError::Configuration(_) => "configuration",
-        BridgeError::Authentication => "authentication",
-        BridgeError::CameraNotFound => "camera_not_found",
-        BridgeError::Capacity(_) => "capacity",
-        BridgeError::Recording(_) => "recording",
-        BridgeError::RecordingActive => "recording_active",
-        BridgeError::Upstream(_) => "upstream",
-        BridgeError::UpstreamUnavailable => "upstream_unavailable",
-        BridgeError::Io(_) => "io",
-        BridgeError::Http(_) => "http",
-        BridgeError::Json(_) => "json",
-        BridgeError::Task(_) => "task",
     }
 }

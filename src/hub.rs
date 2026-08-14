@@ -237,6 +237,14 @@ async fn run_producer(inner: Arc<RawInner>, cancel: CancellationToken) {
         .transport
         .stream_mpeg_ps(&inner.camera, cancel.clone(), consumer)
         .await;
+    if let Err(error) = &result {
+        tracing::warn!(
+            camera = %inner.alias,
+            error_type = error.diagnostic_code(),
+            detail = error.diagnostic_detail(),
+            "upstream stream producer stopped"
+        );
+    }
     if !cancel.is_cancelled() && result.is_err() {
         inner
             .metrics
