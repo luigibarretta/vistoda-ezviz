@@ -22,6 +22,7 @@ modify camera firmware.
 - fresh JPEG snapshots with short request coalescing;
 - finite MPEG-PS recordings with immutable manifests and SHA-256 digests;
 - one lazy upstream shared by multiple bounded consumers;
+- hard live-client lifetime limits that protect battery-powered cameras;
 - health and Prometheus metrics without serials, tokens, URLs or media.
 
 ## Architecture

@@ -42,9 +42,27 @@ first MPEG-PS chunk) with `remux_startup_seconds` (MPEG-TS subscriber to first
 output chunk). Their difference approximates local FFmpeg startup/probing;
 optimize probe parameters only after repeated real-camera measurements.
 
+## Live-session battery guard
+
+`EZVIZ_BRIDGE_MAX_LIVE_SESSION_SECONDS` limits each `live.mpegps` and `live.ts`
+HTTP client. It defaults to 90 seconds and accepts 30 through 900 seconds. A
+client must reconnect deliberately after the bridge closes the response. This
+is a fail-safe for unattended browser tabs and media clients; consumers should
+still ask the user whether to continue before reaching the hard limit.
+
+The limit does not apply to finite recordings. Their independently bounded
+duration is controlled by `EZVIZ_BRIDGE_MAX_RECORDING_SECONDS`. After the final
+live subscriber disconnects, verify subscriber and upstream metrics return to
+zero once the idle grace expires.
+
 ## SceneTrove
 
-SceneTrove uses the finite-capture workflow, never the infinite live endpoint:
+SceneTrove uses the bounded live endpoint for interactive viewing and the
+finite-capture workflow for durable recordings. Its UI confirmation must occur
+before the bridge hard limit, and closing or hiding the viewer must release the
+live response.
+
+The durable capture workflow is:
 
 1. `POST /v1/cameras/front-door/recordings` with Bearer auth,
    `Idempotency-Key`, and `{"duration_seconds": N}`.

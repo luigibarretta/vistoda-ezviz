@@ -15,6 +15,7 @@ services:
       EZVIZ_BRIDGE_API_TOKEN_FILE: /run/secrets/api_token
       EZVIZ_BRIDGE_EZVIZ_TOKEN_FILE: /data/token.json
       EZVIZ_BRIDGE_DATA_DIR: /data
+      EZVIZ_BRIDGE_MAX_LIVE_SESSION_SECONDS: "90"
       EZVIZ_BRIDGE_SNAPSHOT_CACHE: "120"
       EZVIZ_BRIDGE_SNAPSHOT_STALE: "900"
     secrets:

@@ -23,6 +23,7 @@ pub struct BridgeConfig {
     pub data_dir: PathBuf,
     pub ffmpeg_path: PathBuf,
     pub upstream_timeout_seconds: u64,
+    pub max_live_session_seconds: u64,
     pub idle_grace_seconds: u64,
     pub queue_chunks: usize,
     pub max_subscribers: usize,
@@ -53,6 +54,12 @@ impl BridgeConfig {
             data_dir: path("EZVIZ_BRIDGE_DATA_DIR", "/data"),
             ffmpeg_path: path("EZVIZ_BRIDGE_FFMPEG_PATH", "/usr/bin/ffmpeg"),
             upstream_timeout_seconds: integer("EZVIZ_BRIDGE_UPSTREAM_TIMEOUT", 20, 5, 60)?,
+            max_live_session_seconds: integer(
+                "EZVIZ_BRIDGE_MAX_LIVE_SESSION_SECONDS",
+                90,
+                30,
+                900,
+            )?,
             idle_grace_seconds: integer("EZVIZ_BRIDGE_IDLE_GRACE", 15, 0, 120)?,
             queue_chunks: usize::try_from(integer("EZVIZ_BRIDGE_QUEUE_CHUNKS", 32, 2, 256)?)
                 .map_err(|_| BridgeError::Configuration("queue size is invalid".into()))?,

@@ -1,106 +1,18 @@
-use std::{
-    collections::BTreeMap, fs, os::unix::fs::PermissionsExt, path::PathBuf, sync::Arc,
-    time::Duration,
-};
+mod support;
 
-use async_trait::async_trait;
+use std::{fs, sync::Arc, time::Duration};
+
 use axum::{
     body::Body,
     http::{Request, StatusCode, header},
 };
-use ezviz_vtm_bridge::{
-    api::{Runtime, router},
-    config::{BridgeConfig, CameraConfig},
-    error::BridgeError,
-    transport::{CameraTransport, ChunkConsumer},
-};
+use ezviz_vtm_bridge::api::router;
 use http_body_util::BodyExt;
 use serde_json::Value;
-use tempfile::TempDir;
-use tokio::time::sleep;
-use tokio_util::sync::CancellationToken;
+use tokio::time::{Instant, sleep, timeout};
 use tower::ServiceExt;
 
-const TOKEN: &str = "0123456789abcdef0123456789abcdef";
-
-struct FakeTransport;
-
-#[async_trait]
-impl CameraTransport for FakeTransport {
-    async fn snapshot_jpeg(&self, _: &CameraConfig) -> Result<Vec<u8>, BridgeError> {
-        Ok(vec![0xff, 0xd8, 0xff, 0xe0, 0xff, 0xd9])
-    }
-
-    async fn stream_mpeg_ps(
-        &self,
-        _: &CameraConfig,
-        cancel: CancellationToken,
-        output: Arc<dyn ChunkConsumer>,
-    ) -> Result<(), BridgeError> {
-        while !cancel.is_cancelled() {
-            if !output.consume(b"\x00\x00\x01\xba-media".to_vec()) {
-                break;
-            }
-            sleep(Duration::from_millis(10)).await;
-        }
-        Ok(())
-    }
-}
-
-struct TestSystem {
-    directory: TempDir,
-    runtime: Arc<Runtime>,
-}
-
-impl TestSystem {
-    fn new() -> Self {
-        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-        let token_path = directory.path().join("api-token");
-        fs::write(&token_path, TOKEN).unwrap_or_else(|error| panic!("{error}"));
-        fs::set_permissions(&token_path, fs::Permissions::from_mode(0o600))
-            .unwrap_or_else(|error| panic!("{error}"));
-        let mut cameras = BTreeMap::new();
-        cameras.insert(
-            "front".into(),
-            CameraConfig {
-                serial: "never-exposed".into(),
-                decrypt_video: false,
-                media_key_file: None,
-            },
-        );
-        let config = BridgeConfig {
-            bind_host: "127.0.0.1".into(),
-            bind_port: 8765,
-            api_token_file: token_path,
-            ezviz_token_file: PathBuf::from("unused"),
-            cameras,
-            data_dir: directory.path().join("data"),
-            ffmpeg_path: PathBuf::from("/usr/bin/false"),
-            upstream_timeout_seconds: 20,
-            idle_grace_seconds: 0,
-            queue_chunks: 8,
-            max_subscribers: 4,
-            max_recording_seconds: 10,
-            max_recording_bytes: 1024 * 1024,
-            recording_quota_bytes: 4 * 1024 * 1024,
-            snapshot_cache_seconds: 3,
-            snapshot_stale_seconds: 30,
-        };
-        let runtime = Runtime::build(config, Arc::new(FakeTransport))
-            .unwrap_or_else(|error| panic!("{error}"));
-        Self { directory, runtime }
-    }
-
-    fn request(method: &str, path: &str, body: Body) -> Request<Body> {
-        Request::builder()
-            .method(method)
-            .uri(path)
-            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(body)
-            .unwrap_or_else(|error| panic!("{error}"))
-    }
-}
+use support::TestSystem;
 
 async fn json(response: axum::response::Response) -> Value {
     let bytes = response
@@ -110,6 +22,31 @@ async fn json(response: axum::response::Response) -> Value {
         .unwrap_or_else(|error| panic!("{error}"))
         .to_bytes();
     serde_json::from_slice(&bytes).unwrap_or_else(|error| panic!("{error}"))
+}
+
+#[tokio::test]
+async fn live_stream_ends_at_the_configured_session_limit() {
+    let system = TestSystem::with_live_session_limit(1);
+    let response = router(Arc::clone(&system.runtime))
+        .oneshot(TestSystem::request(
+            "GET",
+            "/v1/cameras/front/live.mpegps",
+            Body::empty(),
+        ))
+        .await
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let started = Instant::now();
+    let media = timeout(Duration::from_secs(2), response.into_body().collect())
+        .await
+        .unwrap_or_else(|error| panic!("live response exceeded its session limit: {error}"))
+        .unwrap_or_else(|error| panic!("{error}"))
+        .to_bytes();
+
+    assert!(media.starts_with(b"\x00\x00\x01\xba"));
+    assert!(started.elapsed() >= Duration::from_millis(900));
+    system.runtime.close().await;
 }
 
 #[tokio::test]

@@ -8,7 +8,10 @@ use axum::{
     response::Response,
 };
 use bytes::Bytes;
-use tokio::{sync::mpsc, time::timeout};
+use tokio::{
+    sync::mpsc,
+    time::{sleep, timeout},
+};
 
 use crate::error::BridgeError;
 
@@ -47,8 +50,16 @@ pub(super) async fn raw_stream(
     };
     let body = Body::from_stream(stream! {
         yield Ok::<_, Infallible>(first);
-        while let Some(chunk) = subscription.receiver.recv().await {
-            yield Ok::<_, Infallible>(chunk);
+        let deadline = sleep(Duration::from_secs(runtime.config.max_live_session_seconds));
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                () = &mut deadline => break,
+                chunk = subscription.receiver.recv() => match chunk {
+                    Some(chunk) => yield Ok::<_, Infallible>(chunk),
+                    None => break,
+                },
+            }
         }
         hub.unsubscribe(subscription.id);
     });
@@ -81,8 +92,16 @@ pub(super) async fn ts_stream(
     };
     let body = Body::from_stream(stream! {
         yield Ok::<_, Infallible>(first);
-        while let Some(chunk) = subscription.receiver.recv().await {
-            yield Ok::<_, Infallible>(chunk);
+        let deadline = sleep(Duration::from_secs(runtime.config.max_live_session_seconds));
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                () = &mut deadline => break,
+                chunk = subscription.receiver.recv() => match chunk {
+                    Some(chunk) => yield Ok::<_, Infallible>(chunk),
+                    None => break,
+                },
+            }
         }
         hub.unsubscribe(subscription.id);
     });
