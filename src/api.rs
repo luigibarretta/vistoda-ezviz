@@ -1,6 +1,5 @@
-use std::{collections::BTreeMap, convert::Infallible, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-use async_stream::stream;
 use axum::{
     Json, Router,
     body::Body,
@@ -19,6 +18,10 @@ use crate::{
     metrics::Metrics, recordings::RecordingManager, remux::MpegTsHub, snapshot::SnapshotService,
     storage::ensure_private_regular, transport::CameraTransport,
 };
+
+#[path = "api_stream.rs"]
+mod stream_api;
+use stream_api::{raw_stream, ts_stream};
 
 pub struct Runtime {
     pub config: BridgeConfig,
@@ -168,53 +171,6 @@ async fn snapshot(
     Ok(result)
 }
 
-async fn raw_stream(
-    State(runtime): State<Arc<Runtime>>,
-    Path(camera): Path<String>,
-) -> Result<Response, BridgeError> {
-    let hub = Arc::clone(
-        runtime
-            .raw
-            .get(&camera)
-            .ok_or(BridgeError::CameraNotFound)?,
-    );
-    let mut subscription = hub.subscribe().await?;
-    runtime
-        .metrics
-        .increment("stream_requests_total", &camera)
-        .await;
-    let body = Body::from_stream(stream! {
-        while let Some(chunk) = subscription.receiver.recv().await {
-            yield Ok::<_, Infallible>(chunk);
-        }
-        hub.unsubscribe(subscription.id);
-    });
-    let mut result = response(StatusCode::OK, "video/mpeg", body);
-    no_store(result.headers_mut());
-    Ok(result)
-}
-
-async fn ts_stream(
-    State(runtime): State<Arc<Runtime>>,
-    Path(camera): Path<String>,
-) -> Result<Response, BridgeError> {
-    let hub = Arc::clone(runtime.ts.get(&camera).ok_or(BridgeError::CameraNotFound)?);
-    let mut subscription = hub.subscribe().await?;
-    runtime
-        .metrics
-        .increment("stream_requests_total", &camera)
-        .await;
-    let body = Body::from_stream(stream! {
-        while let Some(chunk) = subscription.receiver.recv().await {
-            yield Ok::<_, Infallible>(chunk);
-        }
-        hub.unsubscribe(subscription.id);
-    });
-    let mut result = response(StatusCode::OK, "video/mp2t", body);
-    no_store(result.headers_mut());
-    Ok(result)
-}
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RecordingRequest {
@@ -279,7 +235,11 @@ async fn download_recording(
     Ok(result)
 }
 
-fn response(status: StatusCode, content_type: &'static str, body: impl Into<Body>) -> Response {
+pub(super) fn response(
+    status: StatusCode,
+    content_type: &'static str,
+    body: impl Into<Body>,
+) -> Response {
     let mut response = Response::new(body.into());
     *response.status_mut() = status;
     response
@@ -287,7 +247,7 @@ fn response(status: StatusCode, content_type: &'static str, body: impl Into<Body
         .insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     response
 }
-fn no_store(headers: &mut HeaderMap) {
+pub(super) fn no_store(headers: &mut HeaderMap) {
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     headers.insert(
         "x-content-type-options",

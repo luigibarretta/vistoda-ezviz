@@ -154,9 +154,14 @@ impl EzvizTransport {
             .get("streamBizUrl")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        let server_path = format!("/v3/streaming/vtm/{serial}/1");
-        let server_request = self.api_json(Method::GET, &server_path, &[]);
-        let (server, vtdu) = tokio::try_join!(server_request, self.vtdu_token())?;
+        // The VTDU token is issued for the following VTM allocation request.
+        // Preserve the vendor client's verified ordering: pagelist, token,
+        // then refreshed server metadata. Concurrent requests can bind the
+        // one-shot token to a different allocation and yield an empty stream.
+        let vtdu = self.vtdu_token().await?;
+        let server = self
+            .api_json(Method::GET, &format!("/v3/streaming/vtm/{serial}/1"), &[])
+            .await?;
         let server = server
             .get("streamServerConfig")
             .or_else(|| page.get("VTM").and_then(|value| value.get(&resource_id)))

@@ -18,6 +18,8 @@ pub enum BridgeError {
     RecordingActive,
     #[error("upstream protocol failed: {0}")]
     Upstream(String),
+    #[error("upstream media is unavailable")]
+    UpstreamUnavailable,
     #[error("I/O operation failed: {0}")]
     Io(#[from] std::io::Error),
     #[error("HTTP operation failed: {0}")]
@@ -40,6 +42,10 @@ impl BridgeError {
                 json!({"error":"invalid_recording_request", "detail":detail}),
             ),
             Self::RecordingActive => (StatusCode::CONFLICT, json!({"error":"recording_active"})),
+            Self::UpstreamUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                json!({"error":"upstream_unavailable"}),
+            ),
             _ => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({"error":"internal_error"}),
@@ -67,6 +73,7 @@ const fn error_kind(error: &BridgeError) -> &'static str {
         BridgeError::Recording(_) => "recording",
         BridgeError::RecordingActive => "recording_active",
         BridgeError::Upstream(_) => "upstream",
+        BridgeError::UpstreamUnavailable => "upstream_unavailable",
         BridgeError::Io(_) => "io",
         BridgeError::Http(_) => "http",
         BridgeError::Json(_) => "json",
