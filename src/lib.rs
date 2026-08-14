@@ -7,6 +7,7 @@ pub mod cli;
 pub mod config;
 pub mod error;
 pub mod hub;
+mod hub_failure;
 pub mod metrics;
 pub mod recordings;
 pub mod remux;

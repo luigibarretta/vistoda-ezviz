@@ -46,6 +46,9 @@ impl VtmSession {
             };
             session.start(redirect_key.as_deref()).await?;
             if let Some(result) = session.info.result.filter(|result| *result != 0) {
+                if result == 5404 {
+                    return Err(BridgeError::CameraOffline);
+                }
                 let Some(url) = session.info.redirect_url.clone() else {
                     return Err(BridgeError::Upstream(format!(
                         "VTM stream request was rejected with result {result}"

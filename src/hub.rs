@@ -14,6 +14,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     config::CameraConfig,
     error::BridgeError,
+    hub_failure::StreamFailure,
     metrics::Metrics,
     transport::{CameraTransport, ChunkConsumer},
 };
@@ -61,6 +62,7 @@ struct RawInner {
     max_subscribers: usize,
     idle_grace: Duration,
     closed: AtomicBool,
+    last_failure: StdMutex<Option<StreamFailure>>,
 }
 
 impl RawStreamHub {
@@ -89,6 +91,7 @@ impl RawStreamHub {
                 max_subscribers,
                 idle_grace,
                 closed: AtomicBool::new(false),
+                last_failure: StdMutex::new(None),
             }),
         })
     }
@@ -125,6 +128,12 @@ impl RawStreamHub {
         remove_subscriber(Arc::clone(&self.inner), id);
     }
 
+    #[must_use]
+    pub fn startup_error(&self) -> BridgeError {
+        lock(&self.inner.last_failure)
+            .map_or(BridgeError::UpstreamUnavailable, StreamFailure::into_error)
+    }
+
     fn ensure_running(&self) {
         let mut producer = lock(&self.inner.producer);
         if producer
@@ -134,6 +143,7 @@ impl RawStreamHub {
             return;
         }
         let cancel = CancellationToken::new();
+        *lock(&self.inner.last_failure) = None;
         let inner = Arc::clone(&self.inner);
         let task_cancel = cancel.clone();
         let task = tokio::spawn(async move { run_producer(inner, task_cancel).await });
@@ -244,6 +254,9 @@ async fn run_producer(inner: Arc<RawInner>, cancel: CancellationToken) {
             detail = error.diagnostic_detail(),
             "upstream stream producer stopped"
         );
+        *lock(&inner.last_failure) = Some(StreamFailure::from_error(error));
+    } else {
+        *lock(&inner.last_failure) = None;
     }
     if !cancel.is_cancelled() && result.is_err() {
         inner

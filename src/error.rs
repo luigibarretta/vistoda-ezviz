@@ -10,6 +10,8 @@ pub enum BridgeError {
     Authentication,
     #[error("camera was not found")]
     CameraNotFound,
+    #[error("camera is offline")]
+    CameraOffline,
     #[error("capacity limit reached: {0}")]
     Capacity(String),
     #[error("invalid recording request: {0}")]
@@ -37,6 +39,7 @@ impl BridgeError {
             Self::Configuration(_) => "configuration",
             Self::Authentication => "authentication",
             Self::CameraNotFound => "camera_not_found",
+            Self::CameraOffline => "camera_offline",
             Self::Capacity(_) => "capacity",
             Self::Recording(_) => "recording",
             Self::RecordingActive => "recording_active",
@@ -58,6 +61,7 @@ impl BridgeError {
             | Self::Upstream(detail) => detail,
             Self::Authentication => "authentication failed",
             Self::CameraNotFound => "camera not found",
+            Self::CameraOffline => "camera offline",
             Self::RecordingActive => "recording active",
             Self::UpstreamUnavailable => "upstream media unavailable",
             Self::Io(_) => "I/O failure",
@@ -72,6 +76,10 @@ impl BridgeError {
         match self {
             Self::Authentication => (StatusCode::UNAUTHORIZED, json!({"error":"unauthorized"})),
             Self::CameraNotFound => (StatusCode::NOT_FOUND, json!({"error":"camera_not_found"})),
+            Self::CameraOffline => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                json!({"error":"camera_offline"}),
+            ),
             Self::Capacity(_) => (StatusCode::TOO_MANY_REQUESTS, json!({"error":"capacity"})),
             Self::Recording(detail) => (
                 StatusCode::BAD_REQUEST,

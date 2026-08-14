@@ -38,7 +38,11 @@ pub(super) async fn raw_stream(
         Ok(chunk) => chunk,
         Err(error) => {
             hub.unsubscribe(subscription.id);
-            return Err(error);
+            return Err(if matches!(error, BridgeError::UpstreamUnavailable) {
+                hub.startup_error()
+            } else {
+                error
+            });
         }
     };
     let body = Body::from_stream(stream! {
