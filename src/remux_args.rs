@@ -19,7 +19,7 @@ pub(super) const ARGUMENTS: &[&str] = &[
     "-c",
     "copy",
     "-bsf:v",
-    "dump_extra=freq=keyframe",
+    "extract_extradata,dump_extra=freq=keyframe",
     "-muxdelay",
     "0",
     "-flush_packets",
@@ -38,7 +38,7 @@ mod tests {
     #[test]
     fn transport_and_codec_headers_repeat_for_late_subscribers() {
         for required in [
-            ["-bsf:v", "dump_extra=freq=keyframe"],
+            ["-bsf:v", "extract_extradata,dump_extra=freq=keyframe"],
             ["-mpegts_flags", "+resend_headers"],
         ] {
             assert!(

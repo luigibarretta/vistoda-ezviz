@@ -25,3 +25,4 @@ jobs:
       - run: >-
           docker run --rm --network none --read-only --user 10001:10001
           ezviz-vtm-bridge:test --version
+      - run: ./tests/smoke-remux.sh ezviz-vtm-bridge:test
