@@ -12,12 +12,20 @@ docker run \
   --entrypoint /bin/sh \
   "${image}" \
   -ec '
-    ffmpeg -hide_banner -loglevel error \
+    ffmpeg -hide_banner -loglevel fatal \
       -f lavfi -i testsrc=size=320x180:rate=10 \
       -f lavfi -i sine=frequency=1000:sample_rate=8000 \
-      -t 2 -c:v libx264 -g 10 -c:a mp2 -f mpeg pipe:1 |
-    ffmpeg -hide_banner -loglevel error -f mpeg -i pipe:0 \
+      -t 4 -c:v libx264 -g 10 -keyint_min 10 -sc_threshold 0 -bf 0 \
+      -c:a mp2 -muxdelay 0 -f mpeg pipe:1 |
+    ffmpeg -hide_banner -loglevel error -fflags +genpts -f mpeg -i pipe:0 \
       -map 0:v:0 -map 0:a:0 -c copy \
       -bsf:v extract_extradata,dump_extra=freq=keyframe \
-      -mpegts_flags +resend_headers -f mpegts pipe:1 >/dev/null
+      -f segment -segment_time 1 -reset_timestamps 1 \
+      -segment_format mpegts \
+      -segment_format_options mpegts_flags=+resend_headers \
+      /tmp/late-%02d.ts
+
+    ffmpeg -hide_banner -loglevel error -xerror \
+      -i /tmp/late-01.ts -t 0.5 \
+      -map 0:v:0 -map 0:a:0 -f null -
   '
