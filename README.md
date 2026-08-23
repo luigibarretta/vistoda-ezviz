@@ -1,9 +1,13 @@
-# EZVIZ VTM Bridge
+# Vistoda EZVIZ
 
-Production-oriented media bridge for modern EZVIZ cameras that expose cloud
+Production-oriented Vistoda connector for modern EZVIZ cameras that expose cloud
 VTM/VTDU media but no usable RTSP listener. One authenticated upstream session
 is shared across bounded, authenticated outputs for Home Assistant and
 SceneTrove.
+
+The Rust package and executable remain `ezviz-vtm-bridge` as a compatibility
+contract for existing images, health checks and automation. The product and
+canonical repository are Vistoda EZVIZ and `vistoda-ezviz`.
 
 ## Why it exists
 

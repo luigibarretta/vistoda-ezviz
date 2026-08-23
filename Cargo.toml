@@ -4,9 +4,9 @@ version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
 authors = ["Luigi Barretta"]
-description = "Bounded EZVIZ VTM/VTDU media bridge for Home Assistant and SceneTrove"
+description = "Vistoda connector for bounded EZVIZ VTM/VTDU media delivery"
 license = "Apache-2.0"
-repository = "https://git.luigibarretta.com/luigibarretta/ezviz-vtm-bridge"
+repository = "https://git.luigibarretta.com/luigibarretta/vistoda-ezviz"
 
 [lib]
 name = "ezviz_vtm_bridge"

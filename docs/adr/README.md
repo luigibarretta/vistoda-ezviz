@@ -13,3 +13,4 @@
 - [ADR-0011 — Consumer adapters](0011-consumer-adapters.md)
 - [ADR-0012 — Native Rust transport and migration](0012-rust-transport.md)
 - [ADR-0013 — Durable recording acknowledgement](0013-recording-ack.md)
+- [ADR-0014 — Vistoda product identity](0014-vistoda-product-identity.md)

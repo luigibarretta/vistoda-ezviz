@@ -1,6 +1,6 @@
 services:
   ezviz-vtm-bridge:
-    image: git.luigibarretta.com/luigibarretta/ezviz-vtm-bridge:COMMIT@sha256:DIGEST
+    image: git.luigibarretta.com/luigibarretta/vistoda-ezviz:COMMIT@sha256:DIGEST
     restart: unless-stopped
     read_only: true
     user: "10001:10001"

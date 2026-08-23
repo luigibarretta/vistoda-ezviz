@@ -16,10 +16,10 @@ RUN cargo build --release --locked --bins \
 FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
 ARG VERSION=0.2.0
 ARG REVISION=unknown
-LABEL org.opencontainers.image.title="EZVIZ VTM Bridge" \
+LABEL org.opencontainers.image.title="Vistoda EZVIZ" \
       org.opencontainers.image.version=$VERSION \
       org.opencontainers.image.revision=$REVISION \
-      org.opencontainers.image.source="https://git.luigibarretta.com/luigibarretta/ezviz-vtm-bridge" \
+      org.opencontainers.image.source="https://git.luigibarretta.com/luigibarretta/vistoda-ezviz" \
       org.opencontainers.image.licenses="Apache-2.0"
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates ffmpeg \
