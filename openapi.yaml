@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: EZVIZ VTM Bridge
-  version: 1.1.0
+  version: 1.2.0
   description: Internal bounded media contract for Home Assistant and SceneTrove.
 servers:
   - url: http://ezviz-vtm-bridge:8765
@@ -26,6 +26,61 @@ paths:
           content:
             text/plain:
               schema: {type: string}
+  /v1/enrollments:
+    post:
+      summary: Start one bounded EZVIZ account enrollment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [account, password]
+              properties:
+                account: {type: string, minLength: 1}
+                password: {type: string, minLength: 4}
+                api_region: {type: string, default: eu}
+      responses:
+        "200":
+          description: Enrollment completed or requires MFA
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Enrollment"}
+        "409": {description: Another enrollment is active}
+        "422": {description: EZVIZ rejected the credentials}
+  /v1/enrollments/{enrollment_id}:
+    parameters:
+      - name: enrollment_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      summary: Complete a single-use EZVIZ MFA challenge
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: {type: string, pattern: "^[0-9]{6}$"}
+      responses:
+        "200": {description: Enrollment completed}
+        "410": {description: Enrollment expired or was consumed}
+        "422": {description: MFA code rejected}
+    delete:
+      summary: Cancel a pending enrollment
+      security:
+        - bearerAuth: []
+      responses:
+        "204": {description: Pending enrollment removed or already absent}
   /v1/cameras/{camera}/snapshot.jpg:
     get:
       security:
@@ -160,6 +215,14 @@ components:
       required: true
       schema: {type: string, format: uuid}
   schemas:
+    Enrollment:
+      type: object
+      additionalProperties: false
+      required: [enrollment_id, next_step, expires_in]
+      properties:
+        enrollment_id: {type: string, format: uuid}
+        next_step: {type: string, enum: [otp, complete]}
+        expires_in: {type: integer, minimum: 0, maximum: 120}
     Health:
       type: object
       required: [status, version]

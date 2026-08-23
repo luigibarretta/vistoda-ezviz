@@ -90,6 +90,26 @@ async fn healthcheck() -> Result<(), BridgeError> {
 async fn serve() -> Result<(), BridgeError> {
     let config = BridgeConfig::from_env()?;
     let address = format!("{}:{}", config.bind_host, config.bind_port);
+    if !config.ezviz_token_file.is_file() {
+        serve_enrollment(&address, &config).await?;
+        if !config.ezviz_token_file.is_file() {
+            return Ok(());
+        }
+    }
+    serve_runtime(&address, config).await
+}
+
+async fn serve_enrollment(address: &str, config: &BridgeConfig) -> Result<(), BridgeError> {
+    let (ready, receiver) = tokio::sync::watch::channel(false);
+    let listener = tokio::net::TcpListener::bind(address).await?;
+    tracing::info!(bind = %address, version = crate::VERSION, "waiting for EZVIZ enrollment");
+    axum::serve(listener, crate::bootstrap::router(config, ready)?)
+        .with_graceful_shutdown(enrollment_shutdown(receiver))
+        .await?;
+    Ok(())
+}
+
+async fn serve_runtime(address: &str, config: BridgeConfig) -> Result<(), BridgeError> {
     let transport = Arc::new(
         EzvizTransport::from_token_file(
             config.ezviz_token_file.clone(),
@@ -105,6 +125,17 @@ async fn serve() -> Result<(), BridgeError> {
         .await?;
     runtime.close().await;
     Ok(())
+}
+
+async fn enrollment_shutdown(mut receiver: tokio::sync::watch::Receiver<bool>) {
+    tokio::select! {
+        () = shutdown_signal() => {},
+        result = receiver.changed() => {
+            if result.is_ok() && *receiver.borrow() {
+                tracing::info!("EZVIZ enrollment completed; enabling media runtime");
+            }
+        },
+    }
 }
 
 async fn shutdown_signal() {

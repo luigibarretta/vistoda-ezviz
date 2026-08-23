@@ -1,6 +1,6 @@
 [package]
 name = "ezviz-vtm-bridge"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.88"
 authors = ["Luigi Barretta"]
@@ -49,6 +49,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 url = "2.5"
 uuid = { version = "1.18", features = ["v4", "serde"] }
+zeroize = { version = "1.8", features = ["serde"] }
 
 [dev-dependencies]
 http-body-util = "0.1"

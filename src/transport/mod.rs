@@ -5,7 +5,7 @@ mod image;
 mod token;
 
 pub use client::EzvizTransport;
-pub use enroll::enroll;
+pub use enroll::{EnrollmentState, PendingEnrollment, begin, enroll};
 pub use token::EzvizToken;
 
 use std::{sync::Arc, time::Duration};

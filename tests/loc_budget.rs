@@ -16,7 +16,7 @@ const EXCLUDED_DIRECTORIES: &[&str] = &[
     "dist",
     "target",
 ];
-const MAINTAINED_SUFFIXES: &[&str] = &["md", "py", "rs", "toml", "yaml", "yml", "json"];
+const MAINTAINED_SUFFIXES: &[&str] = &["md", "py", "rs", "sh", "toml", "yaml", "yml", "json"];
 
 #[test]
 fn maintained_files_stay_within_the_loc_budget() {

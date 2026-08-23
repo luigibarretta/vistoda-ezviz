@@ -6,7 +6,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode, header},
 };
-use ezviz_vtm_bridge::api::router;
+use ezviz_vtm_bridge::{api::router, bootstrap};
 use http_body_util::BodyExt;
 use serde_json::Value;
 use tokio::time::{Instant, sleep, timeout};
@@ -77,6 +77,41 @@ async fn health_is_public_and_media_requires_authentication() {
         unauthorized.headers()[header::WWW_AUTHENTICATE],
         "Basic realm=\"ezviz-vtm-bridge\""
     );
+    system.runtime.close().await;
+}
+
+#[tokio::test]
+async fn enrollment_bootstrap_is_private_and_reports_its_phase() {
+    let system = TestSystem::new();
+    let (ready, _receiver) = tokio::sync::watch::channel(false);
+    let app =
+        bootstrap::router(&system.runtime.config, ready).unwrap_or_else(|error| panic!("{error}"));
+    let health = app
+        .clone()
+        .oneshot(
+            Request::get("/healthz")
+                .body(Body::empty())
+                .unwrap_or_else(|error| panic!("{error}")),
+        )
+        .await
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(health.status(), StatusCode::OK);
+    assert_eq!(json(health).await["phase"], "enrollment_required");
+    let unauthorized = app
+        .clone()
+        .oneshot(
+            Request::get("/metrics")
+                .body(Body::empty())
+                .unwrap_or_else(|error| panic!("{error}")),
+        )
+        .await
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+    let authorized = app
+        .oneshot(TestSystem::request("GET", "/metrics", Body::empty()))
+        .await
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(authorized.status(), StatusCode::OK);
     system.runtime.close().await;
 }
 

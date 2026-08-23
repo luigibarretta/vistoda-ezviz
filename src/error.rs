@@ -8,6 +8,14 @@ pub enum BridgeError {
     Configuration(String),
     #[error("authentication failed")]
     Authentication,
+    #[error("vendor credentials were rejected")]
+    InvalidCredentials,
+    #[error("verification code was rejected")]
+    InvalidOtp,
+    #[error("another enrollment is active")]
+    EnrollmentBusy,
+    #[error("enrollment expired or was consumed")]
+    EnrollmentExpired,
     #[error("camera was not found")]
     CameraNotFound,
     #[error("camera is offline")]
@@ -38,6 +46,10 @@ impl BridgeError {
         match self {
             Self::Configuration(_) => "configuration",
             Self::Authentication => "authentication",
+            Self::InvalidCredentials => "invalid_credentials",
+            Self::InvalidOtp => "invalid_otp",
+            Self::EnrollmentBusy => "enrollment_busy",
+            Self::EnrollmentExpired => "enrollment_expired",
             Self::CameraNotFound => "camera_not_found",
             Self::CameraOffline => "camera_offline",
             Self::Capacity(_) => "capacity",
@@ -60,6 +72,10 @@ impl BridgeError {
             | Self::Recording(detail)
             | Self::Upstream(detail) => detail,
             Self::Authentication => "authentication failed",
+            Self::InvalidCredentials => "vendor credentials were rejected",
+            Self::InvalidOtp => "verification code was rejected",
+            Self::EnrollmentBusy => "another enrollment is active",
+            Self::EnrollmentExpired => "enrollment expired or was consumed",
             Self::CameraNotFound => "camera not found",
             Self::CameraOffline => "camera offline",
             Self::RecordingActive => "recording active",
@@ -75,6 +91,16 @@ impl BridgeError {
     pub fn public_response(&self) -> (StatusCode, Value) {
         match self {
             Self::Authentication => (StatusCode::UNAUTHORIZED, json!({"error":"unauthorized"})),
+            Self::InvalidCredentials => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                json!({"error":"invalid_auth"}),
+            ),
+            Self::InvalidOtp => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                json!({"error":"invalid_otp"}),
+            ),
+            Self::EnrollmentBusy => (StatusCode::CONFLICT, json!({"error":"enrollment_busy"})),
+            Self::EnrollmentExpired => (StatusCode::GONE, json!({"error":"enrollment_expired"})),
             Self::CameraNotFound => (StatusCode::NOT_FOUND, json!({"error":"camera_not_found"})),
             Self::CameraOffline => (
                 StatusCode::SERVICE_UNAVAILABLE,

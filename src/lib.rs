@@ -2,9 +2,11 @@
 
 pub mod api;
 pub mod auth;
+pub mod bootstrap;
 pub mod canary;
 pub mod cli;
 pub mod config;
+mod enrollment;
 pub mod error;
 pub mod hub;
 mod hub_failure;
