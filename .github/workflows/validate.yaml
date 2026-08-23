@@ -35,6 +35,9 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --all-targets --all-features --locked
+      # Keep the product MSRV checks above on Rust 1.88, but run cargo-audit
+      # with a current toolchain because audit-check compiles its own CLI.
+      - uses: dtolnay/rust-toolchain@858a1ecb106d4516018578006590eb829de1f08e # 1.96.1
       - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ github.token }}
