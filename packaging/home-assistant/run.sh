@@ -19,7 +19,11 @@ jq -n --arg alias "${alias_name}" --arg serial "${camera_serial}" \
     '{($alias): {serial: $serial, decrypt_video: false}}' >"${cameras_file}"
 chown bridge:bridge "${token_file}" "${cameras_file}"
 chown -R bridge:bridge "${data_dir}/recordings"
-test ! -e "${data_dir}/token.json" || chown bridge:bridge "${data_dir}/token.json"
+chmod 0700 "${data_dir}/recordings"
+if test -e "${data_dir}/token.json"; then
+    chown bridge:bridge "${data_dir}/token.json"
+    chmod 0600 "${data_dir}/token.json"
+fi
 chmod 0600 "${token_file}" "${cameras_file}"
 
 export EZVIZ_BRIDGE_API_TOKEN_FILE="${token_file}"
