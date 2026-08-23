@@ -17,6 +17,7 @@ fn home_assistant_app_is_private_discovered_and_multiarch() {
     assert!(runner.contains("http://supervisor/addons/self/info"));
     assert!(runner.contains("--rawfile api_token"));
     assert!(runner.contains("managed_app: true"));
+    assert!(runner.contains("chown bridge:bridge \"${data_dir}\""));
     assert!(!runner.contains("8765:8765"));
     assert!(workflow.contains("[\"amd64\", \"aarch64\"]"));
     assert!(workflow.contains("home-assistant/builder/actions/build-image"));

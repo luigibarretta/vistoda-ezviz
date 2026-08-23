@@ -8,6 +8,7 @@ readonly cameras_file=/data/cameras.json
 
 umask 077
 mkdir -p "${data_dir}/recordings"
+chown bridge:bridge "${data_dir}"
 
 alias_name="$(jq -er '.alias | strings | select(test("^[A-Za-z0-9_-]+$"))' "${options_file}")"
 camera_serial="$(jq -er '.camera_serial | strings | select(test("^[A-Za-z0-9]+$"))' "${options_file}")"
