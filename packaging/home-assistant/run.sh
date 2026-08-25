@@ -41,7 +41,7 @@ stop_child() {
 trap stop_child INT TERM
 
 attempt=0
-until curl -fsS --max-time 2 http://127.0.0.1:8765/healthz >/dev/null; do
+until curl -fsS --max-time 2 http://127.0.0.1:8765/healthz >/dev/null 2>&1; do
     if ! kill -0 "${child_pid}" 2>/dev/null; then
         wait "${child_pid}"
     fi
