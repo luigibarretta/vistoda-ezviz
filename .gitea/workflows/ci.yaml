@@ -31,9 +31,16 @@ jobs:
       - run: cargo test --locked --all-targets
       - run: cargo install cargo-audit --locked
       - run: cargo audit --deny warnings
-      - run: >-
-          docker build --build-arg VERSION=0.2.0+ci --build-arg REVISION=ci
-          --tag ezviz-vtm-bridge:test .
+      - name: Build standalone image at the declared version
+        shell: bash
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          test -n "${version}"
+          docker build --build-arg "VERSION=${version}+ci" --build-arg REVISION=ci \
+            --tag ezviz-vtm-bridge:test .
+          test "$(docker image inspect ezviz-vtm-bridge:test \
+            --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" \
+            = "${version}+ci"
       - run: >-
           docker run --rm --network none --read-only --user 10001:10001
           ezviz-vtm-bridge:test --version
