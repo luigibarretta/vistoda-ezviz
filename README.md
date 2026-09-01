@@ -116,6 +116,9 @@ tests, RustSec audit, image build and a maximum of 300 physical lines for every
 maintained source, configuration and documentation file. Split a responsibility
 instead of adding a LOC exception. A repository test also rejects any future
 Python source so the Rust-only boundary cannot silently regress.
+The Home Assistant bootstrap is vendored from
+[`vistoda-provider-kit`](https://git.luigibarretta.com/luigibarretta/vistoda-provider-kit)
+at the commit in `dependencies/vistoda-provider-kit.sha` and verified byte-for-byte in CI.
 
 ## Security and operations
 

@@ -7,18 +7,24 @@ fn home_assistant_app_is_private_discovered_and_multiarch() {
         .unwrap_or_else(|error| panic!("{error}"));
     let runner = fs::read_to_string(root.join("packaging/home-assistant/run.sh"))
         .unwrap_or_else(|error| panic!("{error}"));
+    let bootstrap =
+        fs::read_to_string(root.join("packaging/home-assistant/vistoda-app-bootstrap.sh"))
+            .unwrap_or_else(|error| panic!("{error}"));
     let workflow = fs::read_to_string(root.join(".github/workflows/publish-addon.yaml"))
         .unwrap_or_else(|error| panic!("{error}"));
     let api =
         fs::read_to_string(root.join("openapi.yaml")).unwrap_or_else(|error| panic!("{error}"));
     assert!(dockerfile.contains("io.hass.type=\"app\""));
     assert!(dockerfile.contains("HEALTHCHECK"));
-    assert!(runner.contains("http://supervisor/discovery"));
-    assert!(runner.contains("http://supervisor/addons/self/info"));
+    assert!(dockerfile.contains("vistoda-app-bootstrap.sh"));
+    assert!(runner.contains("vistoda_supervisor_app_info"));
+    assert!(runner.contains("vistoda_publish_discovery"));
+    assert!(bootstrap.contains("http://supervisor/discovery"));
+    assert!(bootstrap.contains("http://supervisor/addons/self/info"));
     assert!(runner.contains("--rawfile api_token"));
     assert!(runner.contains("managed_app: true"));
-    assert!(runner.contains("chown bridge:bridge \"${data_dir}\""));
-    assert!(runner.contains("chmod 0600 \"${data_dir}/token.json\""));
+    assert!(runner.contains("vistoda_prepare_data_dir bridge:bridge \"${data_dir}\""));
+    assert!(runner.contains("vistoda_secure_file bridge:bridge \"${data_dir}/token.json\""));
     assert!(!runner.contains("8765:8765"));
     assert!(workflow.contains("[\"amd64\", \"aarch64\"]"));
     assert!(workflow.contains("home-assistant/builder/actions/build-image"));

@@ -20,6 +20,7 @@ RUN apt-get update \
     && useradd --uid 10001 --gid bridge --no-create-home --shell /usr/sbin/nologin bridge
 COPY --from=builder /source/target/release/ezviz-vtm-bridge /usr/local/bin/
 COPY packaging/home-assistant/run.sh /usr/local/bin/vistoda-app-run
+COPY packaging/home-assistant/vistoda-app-bootstrap.sh /usr/local/lib/vistoda-app-bootstrap
 EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl --fail --silent --show-error http://127.0.0.1:8765/healthz || exit 1

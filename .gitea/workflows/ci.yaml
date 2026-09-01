@@ -9,6 +9,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: luigibarretta/vistoda-provider-kit
+          ref: 9f0a48b39a184f1755a3cd051a26b4054c8a7541
+          path: .ci/vistoda-provider-kit
+      - name: Verify pinned Vistoda provider kit
+        run: |
+          pin="$(tr -d '[:space:]' < dependencies/vistoda-provider-kit.sha)"
+          test "${pin}" = "9f0a48b39a184f1755a3cd051a26b4054c8a7541"
+          test "$(git -C .ci/vistoda-provider-kit rev-parse HEAD)" = "${pin}"
+          cmp .ci/vistoda-provider-kit/dist/vistoda-app-bootstrap.sh \
+            packaging/home-assistant/vistoda-app-bootstrap.sh
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: clippy,rustfmt
