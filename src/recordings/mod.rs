@@ -8,7 +8,7 @@ use std::{
     collections::{BTreeMap, VecDeque},
     fs,
     os::unix::fs::PermissionsExt,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -69,7 +69,7 @@ impl RecordingManager {
         fs::create_dir_all(&directory)?;
         fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))?;
         let journal_path = directory.join("recordings.json");
-        let mut state = load_state(&journal_path)?;
+        let mut state = recovery::load_state(&journal_path)?;
         recovery::recover(&directory, &mut state)?;
         let manager = Arc::new(Self {
             directory,
@@ -130,7 +130,7 @@ impl RecordingManager {
             }
             return Ok(existing.clone());
         }
-        if spool_bytes(&self.directory)? + self.max_bytes > self.quota_bytes {
+        if recovery::spool_bytes(&self.directory)? + self.max_bytes > self.quota_bytes {
             return Err(BridgeError::Capacity(
                 "recording quota does not have safe headroom".into(),
             ));
@@ -155,6 +155,19 @@ impl RecordingManager {
 
     pub async fn get(&self, id: &str) -> Option<RecordingManifest> {
         self.state.lock().await.manifests.get(id).cloned()
+    }
+
+    pub async fn list(&self) -> Vec<RecordingManifest> {
+        let mut values: Vec<_> = self
+            .state
+            .lock()
+            .await
+            .manifests
+            .values()
+            .cloned()
+            .collect();
+        values.sort_by(|left, right| right.requested_at.cmp(&left.requested_at));
+        values
     }
 
     pub async fn media_path(&self, id: &str) -> Option<PathBuf> {
@@ -227,30 +240,4 @@ impl RecordingManager {
 
 const fn schema_version() -> u8 {
     2
-}
-fn spool_bytes(directory: &Path) -> Result<u64, BridgeError> {
-    let mut total = 0_u64;
-    for entry in fs::read_dir(directory)? {
-        let entry = entry?;
-        if entry.path().extension().is_some_and(|ext| ext == "mpegps") {
-            total = total.saturating_add(entry.metadata()?.len());
-        }
-    }
-    Ok(total)
-}
-fn load_state(path: &Path) -> Result<State, BridgeError> {
-    if !path.exists() {
-        return Ok(State::default());
-    }
-    let journal: Journal = serde_json::from_slice(&fs::read(path)?)
-        .map_err(|_| BridgeError::Recording("recording journal is invalid".into()))?;
-    Ok(State {
-        manifests: journal
-            .recordings
-            .into_iter()
-            .map(|item| (item.recording_id.clone(), item))
-            .collect(),
-        idempotency: journal.idempotency,
-        acknowledgements: journal.acknowledgements,
-    })
 }

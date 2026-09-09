@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: EZVIZ VTM Bridge
-  version: 1.2.0
+  version: 1.3.0
   description: Internal bounded media contract for Home Assistant and SceneTrove.
 servers:
   - url: http://ezviz-vtm-bridge:8765
@@ -148,6 +148,23 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Recording"}
+  /v1/recordings:
+    get:
+      summary: List the bounded standalone Vistoda recording spool
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Recording manifests ordered newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recordings]
+                properties:
+                  recordings:
+                    type: array
+                    items: {$ref: "#/components/schemas/Recording"}
   /v1/recordings/{recording_id}:
     get:
       security:

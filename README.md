@@ -79,6 +79,9 @@ for canaries, monitoring, backup and rollback.
 | `GET /v1/cameras/{camera}/live.mpegps` | shared MPEG-PS | bearer |
 | `GET /v1/cameras/{camera}/live.ts` | shared MPEG-TS | bearer or Basic |
 | `POST /v1/cameras/{camera}/recordings` | finite capture | bearer |
+| `GET /v1/recordings` | standalone recording inventory | bearer |
+| `GET /v1/recordings/{id}` | immutable recording manifest | bearer |
+| `GET /v1/recordings/{id}/media` | local MPEG-PS media | bearer |
 | `DELETE /v1/recordings/{id}` | idempotent spool ACK after local commit | bearer |
 
 Basic authentication is reserved for Home Assistant's Generic Camera client:
@@ -133,6 +136,8 @@ rules, [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for trust boundaries and
 - [`docs/PLAN.md`](docs/PLAN.md): implementation and verified delivery state;
 - [`docs/RESEARCH.md`](docs/RESEARCH.md): protocol research and provenance;
 - [`docs/adr/README.md`](docs/adr/README.md): architecture decision records;
+- [`docs/adr/0016-vistoda-archive-boundaries.md`](docs/adr/0016-vistoda-archive-boundaries.md):
+  local archive, microSD and talk boundaries;
 - [`deploy/`](deploy): sanitized Compose and camera examples.
 
 ## License and notices

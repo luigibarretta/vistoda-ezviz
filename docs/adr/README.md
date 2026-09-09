@@ -15,3 +15,4 @@
 - [ADR-0013 — Durable recording acknowledgement](0013-recording-ack.md)
 - [ADR-0014 — Vistoda product identity](0014-vistoda-product-identity.md)
 - [ADR-0015 — Home Assistant app packaging](0015-home-assistant-app-packaging.md)
+- [ADR-0016 — Vistoda archive, microSD and talk boundaries](0016-vistoda-archive-boundaries.md)

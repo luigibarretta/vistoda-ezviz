@@ -3,10 +3,38 @@ use std::{fs, io::Read, path::Path};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::{State, model::utc_now};
+use super::{Journal, State, model::utc_now};
 use crate::error::BridgeError;
 
 const PACK_START: &[u8] = b"\x00\x00\x01\xba";
+
+pub(super) fn spool_bytes(directory: &Path) -> Result<u64, BridgeError> {
+    let mut total = 0_u64;
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        if entry.path().extension().is_some_and(|ext| ext == "mpegps") {
+            total = total.saturating_add(entry.metadata()?.len());
+        }
+    }
+    Ok(total)
+}
+
+pub(super) fn load_state(path: &Path) -> Result<State, BridgeError> {
+    if !path.exists() {
+        return Ok(State::default());
+    }
+    let journal: Journal = serde_json::from_slice(&fs::read(path)?)
+        .map_err(|_| BridgeError::Recording("recording journal is invalid".into()))?;
+    Ok(State {
+        manifests: journal
+            .recordings
+            .into_iter()
+            .map(|item| (item.recording_id.clone(), item))
+            .collect(),
+        idempotency: journal.idempotency,
+        acknowledgements: journal.acknowledgements,
+    })
+}
 
 pub(super) fn recover(directory: &Path, state: &mut State) -> Result<(), BridgeError> {
     for manifest in state.manifests.values_mut() {

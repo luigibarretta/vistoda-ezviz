@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod api;
+mod api_recordings;
 pub mod auth;
 pub mod bootstrap;
 pub mod canary;

@@ -7,11 +7,9 @@ use axum::{
     http::{HeaderMap, HeaderValue, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::get,
 };
-use serde::Deserialize;
 use serde_json::json;
-use tokio_util::io::ReaderStream;
 
 use crate::{
     VERSION, auth::ApiAuthenticator, config::BridgeConfig, error::BridgeError, hub::RawStreamHub,
@@ -109,15 +107,7 @@ pub fn router(runtime: Arc<Runtime>) -> Router {
         .route("/v1/cameras/{camera}/snapshot.jpg", get(snapshot))
         .route("/v1/cameras/{camera}/live.mpegps", get(raw_stream))
         .route("/v1/cameras/{camera}/live.ts", get(ts_stream))
-        .route("/v1/cameras/{camera}/recordings", post(create_recording))
-        .route(
-            "/v1/recordings/{recording_id}",
-            get(get_recording).delete(delete_recording),
-        )
-        .route(
-            "/v1/recordings/{recording_id}/media",
-            get(download_recording),
-        )
+        .merge(crate::api_recordings::routes())
         .layer(middleware::from_fn_with_state(
             Arc::clone(&runtime),
             authenticate,
@@ -166,70 +156,6 @@ async fn snapshot(
         StatusCode::OK,
         "image/jpeg",
         Body::from(image.as_ref().clone()),
-    );
-    no_store(result.headers_mut());
-    Ok(result)
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RecordingRequest {
-    duration_seconds: u64,
-}
-
-async fn create_recording(
-    State(runtime): State<Arc<Runtime>>,
-    Path(camera): Path<String>,
-    headers: HeaderMap,
-    Json(payload): Json<RecordingRequest>,
-) -> Result<impl IntoResponse, BridgeError> {
-    let key = headers
-        .get("idempotency-key")
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default();
-    let manifest = runtime
-        .recordings
-        .start(&camera, payload.duration_seconds, key)
-        .await?;
-    Ok((StatusCode::ACCEPTED, Json(manifest)))
-}
-
-async fn get_recording(
-    State(runtime): State<Arc<Runtime>>,
-    Path(id): Path<String>,
-) -> Result<Json<crate::recordings::RecordingManifest>, StatusCode> {
-    runtime
-        .recordings
-        .get(&id)
-        .await
-        .map(Json)
-        .ok_or(StatusCode::NOT_FOUND)
-}
-
-async fn delete_recording(
-    State(runtime): State<Arc<Runtime>>,
-    Path(id): Path<String>,
-) -> Result<StatusCode, BridgeError> {
-    runtime.recordings.acknowledge(&id).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-async fn download_recording(
-    State(runtime): State<Arc<Runtime>>,
-    Path(id): Path<String>,
-) -> Result<Response, StatusCode> {
-    let path = runtime
-        .recordings
-        .media_path(&id)
-        .await
-        .ok_or(StatusCode::NOT_FOUND)?;
-    let file = tokio::fs::File::open(path)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-    let mut result = response(
-        StatusCode::OK,
-        "video/mpeg",
-        Body::from_stream(ReaderStream::new(file)),
     );
     no_store(result.headers_mut());
     Ok(result)
