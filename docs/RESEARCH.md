@@ -15,3 +15,29 @@ after an offline fixture or owner-run live canary reproduces them. In
 particular, the HP7/CP7 AAC track reportedly appears under an MPEG audio PES
 identifier; the bridge does not add audio transcoding unless FFprobe/FFmpeg
 prove the CP4 needs it. Video is never re-encoded.
+
+## Official Open Platform SDK boundary
+
+Reviewed 2026-09-09 against the current official Android sample and Maven
+dependency `io.github.ezviz-open:ezviz-sdk:5.27.3`.
+
+- `EZPlayer.startVoiceTalk(isDeviceTalkBack)` and `stopVoiceTalk()` expose the
+  official talk lifecycle; the sample separately models full duplex and
+  press-to-talk microphone state.
+- `searchRecordFileFromDevice(...)` returns device recording metadata and
+  `startPlayback(EZDeviceRecordInfo)` plays selected SD-card recordings.
+- The developer portal also advertises preview, two-way audio and playback;
+  its Windows C++ SDK advertises streaming download.
+
+These calls prove product feasibility, not compatibility with this bridge. They
+require an EZVIZ Open Platform app/key and a supported native client runtime.
+The current provider instead implements the CP4 consumer-account VTM/VTDU path
+in a HAOS x86_64 Rust app. Vistoda will not embed Android binaries, acquire new
+credential scopes or call destructive storage methods implicitly. A server-side
+integration remains gated on approved credentials plus a supported SDK/runtime,
+or on a separately proven consumer protocol and read-only CP4 live canary.
+
+Primary sources:
+
+- EZVIZ SDK portal: <https://iusopen.ezviz.com/developer>
+- Official Android sample: <https://github.com/Ezviz-Open/EzvizSDK-Android>

@@ -11,6 +11,12 @@ also contains a vendor-managed microSD card and the official application offers
 two-way audio. Neither capability is part of the proven VTM/VTDU downstream
 contract implemented by this repository.
 
+The official EZVIZ Android SDK 5.27.3 confirms separate supported surfaces:
+`startVoiceTalk`, `stopVoiceTalk`, device-record search and SD playback. The
+official demo also distinguishes full-duplex capability from press-to-talk.
+That SDK requires an approved EZVIZ Open Platform application and Android native
+runtime; it is not a server-side library for the current HAOS x86_64 app.
+
 ## Decision
 
 `GET /v1/recordings` exposes the existing redacted immutable manifests, ordered
@@ -23,11 +29,12 @@ The HA control plane may copy a ready recording to a quota-bounded NFS dataset.
 It verifies the manifest byte count and SHA-256 before atomic publication.
 Provider credentials and bridge tokens never reach the browser or NFS metadata.
 
-No microSD UI is exposed until a current CP4 live canary proves the exact list,
-pagination, download, deletion and retention contracts. No microphone/talk
-control is exposed until the uplink codec, framing, authentication, session
-ownership and acknowledgement sequence are independently proven. Downstream
-AAC in a live view is not evidence of a safe full-duplex uplink.
+No microSD UI is exposed until an approved Open Platform credential scope and a
+supported server runtime, or an independently proven consumer-account protocol,
+can run a current CP4 list/playback canary. Destructive storage SDK calls are not
+used. No microphone/talk control is exposed until the same production boundary
+proves the uplink codec, session ownership, mute, teardown and recovery sequence.
+Downstream AAC in a live view is not evidence of a safe full-duplex uplink.
 
 ## Consequences
 
@@ -37,3 +44,5 @@ AAC in a live view is not evidence of a safe full-duplex uplink.
   SceneTrove media are not deleted.
 - The UI reports unavailable protocol surfaces honestly instead of presenting
   controls that cannot be verified or recovered.
+- Android SDK binaries and new provider credentials are not introduced into
+  HAOS implicitly; doing so requires a separate reviewed architecture decision.
