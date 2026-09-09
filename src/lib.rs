@@ -12,6 +12,8 @@ pub mod error;
 pub mod hub;
 mod hub_failure;
 pub mod metrics;
+mod pagination;
+mod recording_playback;
 pub mod recordings;
 pub mod remux;
 pub mod scenetrove;

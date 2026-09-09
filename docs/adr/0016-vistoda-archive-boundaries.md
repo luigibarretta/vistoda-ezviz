@@ -20,9 +20,12 @@ runtime; it is not a server-side library for the current HAOS x86_64 app.
 ## Decision
 
 `GET /v1/recordings` exposes the existing redacted immutable manifests, ordered
-newest first. Vistoda for Home Assistant may request 15, 30 or 60 seconds,
-poll status, download authenticated media and delete a completed bridge-spool
-item. This is deliberately independent from SceneTrove: SceneTrove remains a
+newest first and paginated at no more than 50 items per response. Vistoda for
+Home Assistant may request 15, 30 or 60 seconds, poll status, download
+authenticated media and delete a completed bridge-spool item. Ready recordings
+also expose an on-demand fragmented-MP4 response: FFmpeg copy-remuxes video and
+converts audio to AAC for browser playback without persisting another artifact.
+This is deliberately independent from SceneTrove: SceneTrove remains a
 specialized ingest consumer and Vistoda never scans or mutates its archive.
 
 The HA control plane may copy a ready recording to a quota-bounded NFS dataset.

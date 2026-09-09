@@ -25,6 +25,7 @@ modify camera firmware.
 - copy-remuxed MPEG-TS (`video/mp2t`) for Home Assistant and media clients;
 - fresh JPEG snapshots with short request coalescing;
 - finite MPEG-PS recordings with immutable manifests and SHA-256 digests;
+- server-paginated archive inventory and on-demand browser MP4 playback;
 - one lazy upstream shared by multiple bounded consumers;
 - hard live-client lifetime limits that protect battery-powered cameras;
 - health and Prometheus metrics without serials, tokens, URLs or media.
@@ -79,9 +80,10 @@ for canaries, monitoring, backup and rollback.
 | `GET /v1/cameras/{camera}/live.mpegps` | shared MPEG-PS | bearer |
 | `GET /v1/cameras/{camera}/live.ts` | shared MPEG-TS | bearer or Basic |
 | `POST /v1/cameras/{camera}/recordings` | finite capture | bearer |
-| `GET /v1/recordings` | standalone recording inventory | bearer |
+| `GET /v1/recordings?page=&page_size=&camera=` | paginated standalone recording inventory | bearer |
 | `GET /v1/recordings/{id}` | immutable recording manifest | bearer |
 | `GET /v1/recordings/{id}/media` | local MPEG-PS media | bearer |
+| `GET /v1/recordings/{id}/playback.mp4` | fragmented MP4 browser playback | bearer |
 | `DELETE /v1/recordings/{id}` | idempotent spool ACK after local commit | bearer |
 
 Basic authentication is reserved for Home Assistant's Generic Camera client:

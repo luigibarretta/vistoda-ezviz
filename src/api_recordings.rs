@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     body::Body,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -14,6 +14,7 @@ use tokio_util::io::ReaderStream;
 use crate::{
     api::{Runtime, no_store, response},
     error::BridgeError,
+    pagination, recording_playback,
 };
 
 pub fn routes() -> Router<Arc<Runtime>> {
@@ -28,12 +29,24 @@ pub fn routes() -> Router<Arc<Runtime>> {
             "/v1/recordings/{recording_id}/media",
             get(download_recording),
         )
+        .route(
+            "/v1/recordings/{recording_id}/playback.mp4",
+            get(playback_recording),
+        )
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RecordingRequest {
     duration_seconds: u64,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RecordingPage {
+    page: Option<usize>,
+    page_size: Option<usize>,
+    camera: Option<String>,
 }
 
 async fn create_recording(
@@ -53,10 +66,20 @@ async fn create_recording(
     Ok((StatusCode::ACCEPTED, Json(manifest)))
 }
 
-async fn list_recordings(State(runtime): State<Arc<Runtime>>) -> Json<serde_json::Value> {
-    Json(serde_json::json!({
-        "recordings": runtime.recordings.list().await
-    }))
+async fn list_recordings(
+    State(runtime): State<Arc<Runtime>>,
+    Query(query): Query<RecordingPage>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let mut recordings = runtime.recordings.list().await;
+    if let Some(camera) = query.camera {
+        recordings.retain(|item| item.camera == camera);
+    }
+    let (recordings, pagination) = pagination::page(&recordings, query.page, query.page_size)
+        .ok_or(StatusCode::BAD_REQUEST)?;
+    Ok(Json(serde_json::json!({
+        "recordings": recordings,
+        "pagination": pagination
+    })))
 }
 
 async fn get_recording(
@@ -98,4 +121,11 @@ async fn download_recording(
     );
     no_store(result.headers_mut());
     Ok(result)
+}
+
+async fn playback_recording(
+    State(runtime): State<Arc<Runtime>>,
+    Path(id): Path<String>,
+) -> Result<Response, StatusCode> {
+    recording_playback::playback(runtime, &id).await
 }
