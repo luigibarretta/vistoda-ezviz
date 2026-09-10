@@ -1,6 +1,6 @@
 # EZVIZ VTM research log
 
-Reviewed 2026-08-13 against immutable commit IDs.
+Reviewed 2026-09-10 against immutable commit IDs.
 
 | Project | Commit | License | Relevant evidence | Adoption |
 | --- | --- | --- | --- | --- |
@@ -28,6 +28,14 @@ dependency `io.github.ezviz-open:ezviz-sdk:5.27.3`.
   `startPlayback(EZDeviceRecordInfo)` plays selected SD-card recordings.
 - The developer portal also advertises preview, two-way audio and playback;
   its Windows C++ SDK advertises streaming download.
+- The exact Maven AAR has SHA-256
+  `8c66526597f728a139148a9f997dd56f08d7937e7b38a82be117f1921293abf2` and
+  contains only Android `armeabi-v7a`/`arm64-v8a` native libraries, including
+  `libHCVoiceTalk.so` and `libEZAudioSDK.so`; it has no Linux ABI.
+- The public `EZPlayer`/`EZTalkback` surface can start/stop talk, mute the
+  remote side and open/close the Android microphone, but exposes no PCM/audio
+  injection callback. Therefore a remote HA browser cannot feed its microphone
+  into an Android sidecar through the documented API.
 
 These calls prove product feasibility, not compatibility with this bridge. They
 require an EZVIZ Open Platform app/key and a supported native client runtime.
@@ -35,7 +43,10 @@ The current provider instead implements the CP4 consumer-account VTM/VTDU path
 in a HAOS x86_64 Rust app. Vistoda will not embed Android binaries, acquire new
 credential scopes or call destructive storage methods implicitly. A server-side
 integration remains gated on approved credentials plus a supported SDK/runtime,
-or on a separately proven consumer protocol and read-only CP4 live canary.
+or on a separately proven consumer protocol and read-only CP4 live canary. An
+Android bridge is viable only when the SDK and the user's microphone share the
+same Android process (for example a dedicated Vistoda Android client); placing
+the AAR in a remote Android VM would use that VM's microphone, not the phone's.
 
 Primary sources:
 

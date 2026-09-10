@@ -16,6 +16,9 @@ The official EZVIZ Android SDK 5.27.3 confirms separate supported surfaces:
 official demo also distinguishes full-duplex capability from press-to-talk.
 That SDK requires an approved EZVIZ Open Platform application and Android native
 runtime; it is not a server-side library for the current HAOS x86_64 app.
+The reviewed 5.27.3 AAR contains Android ARM native binaries only. Its public
+talk API owns Android microphone capture internally and provides no supported
+external PCM injection surface.
 
 ## Decision
 
@@ -39,6 +42,14 @@ used. No microphone/talk control is exposed until the same production boundary
 proves the uplink codec, session ownership, mute, teardown and recovery sequence.
 Downstream AAC in a live view is not evidence of a safe full-duplex uplink.
 
+A future Android bridge must therefore run on the same handset that supplies
+the microphone and expose only an owner-bound Vistoda control channel. A remote
+Android container/VM is rejected unless EZVIZ documents external audio
+injection, because it would capture the VM's audio device. A Linux sidecar may
+be accepted only with a vendor-supported Linux SDK or a separately reviewed
+consumer-protocol implementation; Android `.so` files are never relinked or
+emulated inside HAOS.
+
 ## Consequences
 
 - Vistoda has a useful standalone recording archive without depending on
@@ -49,3 +60,5 @@ Downstream AAC in a live view is not evidence of a safe full-duplex uplink.
   controls that cannot be verified or recovered.
 - Android SDK binaries and new provider credentials are not introduced into
   HAOS implicitly; doing so requires a separate reviewed architecture decision.
+- A thin HTTP wrapper around `startVoiceTalk` is not called full duplex unless
+  phone microphone uplink, camera downlink, mute and teardown all pass together.
