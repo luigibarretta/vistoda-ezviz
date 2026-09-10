@@ -76,9 +76,14 @@ async fn list_recordings(
     }
     let (recordings, pagination) = pagination::page(&recordings, query.page, query.page_size)
         .ok_or(StatusCode::BAD_REQUEST)?;
+    let storage = runtime
+        .recordings
+        .storage_descriptor()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     Ok(Json(serde_json::json!({
         "recordings": recordings,
-        "pagination": pagination
+        "pagination": pagination,
+        "storage": storage
     })))
 }
 

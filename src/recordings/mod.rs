@@ -170,6 +170,17 @@ impl RecordingManager {
         values
     }
 
+    pub fn storage_descriptor(&self) -> Result<serde_json::Value, BridgeError> {
+        let used_bytes = recovery::spool_bytes(&self.directory)?;
+        Ok(serde_json::json!({
+            "directory": self.directory.to_string_lossy(),
+            "scope": "addon_private",
+            "used_bytes": used_bytes,
+            "quota_bytes": self.quota_bytes,
+            "available_bytes": self.quota_bytes.saturating_sub(used_bytes)
+        }))
+    }
+
     pub async fn media_path(&self, id: &str) -> Option<PathBuf> {
         let state = self.state.lock().await;
         let manifest = state.manifests.get(id)?;

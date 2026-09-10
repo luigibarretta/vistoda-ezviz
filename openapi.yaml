@@ -3,8 +3,7 @@ info:
   title: EZVIZ VTM Bridge
   version: 1.4.0
   description: Internal bounded media contract for Home Assistant and SceneTrove.
-servers:
-  - url: http://ezviz-vtm-bridge:8765
+servers: [{url: http://ezviz-vtm-bridge:8765}]
 paths:
   /healthz:
     get:
@@ -164,12 +163,13 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [recordings, pagination]
+                required: [recordings, pagination, storage]
                 properties:
                   recordings:
                     type: array
                     items: {$ref: "#/components/schemas/Recording"}
                   pagination: {$ref: "#/components/schemas/Pagination"}
+                  storage: {$ref: "#/components/schemas/Storage"}
         "400":
           description: Page or page size is outside the bounded contract
   /v1/recordings/{recording_id}:
@@ -292,6 +292,7 @@ components:
       additionalProperties: false
       required: [page, page_size, total_items, total_pages, has_previous, has_next]
       properties: {page: {type: integer, minimum: 1}, page_size: {type: integer, minimum: 1, maximum: 50}, total_items: {type: integer, minimum: 0}, total_pages: {type: integer, minimum: 1}, has_previous: {type: boolean}, has_next: {type: boolean}}
+    Storage: {type: object, additionalProperties: false, required: [directory, scope, used_bytes, quota_bytes, available_bytes], properties: {directory: {type: string}, scope: {type: string, const: addon_private}, used_bytes: {type: integer, minimum: 0}, quota_bytes: {type: integer, minimum: 0}, available_bytes: {type: integer, minimum: 0}}}
   responses:
     NotFound:
       description: Resource is absent or not ready
