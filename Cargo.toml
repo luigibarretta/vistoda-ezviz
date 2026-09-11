@@ -21,7 +21,7 @@ name = "scenetrove-pull"
 path = "src/bin/scenetrove_pull.rs"
 
 [dependencies]
-aes = "0.8"
+aes = "0.9"
 async-stream = "0.3"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["json"] }
