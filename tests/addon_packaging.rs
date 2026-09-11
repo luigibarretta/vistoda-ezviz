@@ -25,6 +25,8 @@ fn home_assistant_app_is_private_discovered_and_multiarch() {
     assert!(runner.contains("managed_app: true"));
     assert!(runner.contains("vistoda_prepare_data_dir bridge:bridge \"${data_dir}\""));
     assert!(runner.contains("vistoda_secure_file bridge:bridge \"${data_dir}/token.json\""));
+    assert!(runner.contains("then ($value | tostring)"));
+    assert!(!runner.contains(".substream // false | booleans"));
     assert!(!runner.contains("8765:8765"));
     assert!(workflow.contains("[\"amd64\", \"aarch64\"]"));
     assert!(workflow.contains("home-assistant/builder/actions/build-image"));

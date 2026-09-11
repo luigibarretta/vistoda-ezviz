@@ -18,7 +18,11 @@ camera_serial="$(jq -er '.camera_serial | strings | select(test("^[A-Za-z0-9]+$"
     exit 1
 }
 camera_channel="$(jq -er '.camera_channel // 1 | numbers | select(. >= 1 and . <= 256)' "${options_file}")"
-substream="$(jq -er '.substream // false | booleans' "${options_file}")"
+substream="$(jq -er '
+    (.substream // false) as $value |
+    if ($value | type) == "boolean" then ($value | tostring)
+    else error("substream must be a boolean") end
+' "${options_file}")"
 vistoda_ensure_hex_token "${token_file}" bridge:bridge ''
 jq -n --arg alias "${alias_name}" --arg serial "${camera_serial}" \
     --argjson channel "${camera_channel}" --argjson substream "${substream}" \
