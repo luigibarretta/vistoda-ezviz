@@ -6,9 +6,11 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
-use crate::{error::BridgeError, scenetrove::PullResult};
-
-const PACK_START: &[u8] = b"\x00\x00\x01\xba";
+use crate::{
+    error::BridgeError,
+    media_format::{MediaFormat, PROBE_BYTES},
+    scenetrove::PullResult,
+};
 
 pub fn receipt_path(destination: &Path, key: &str) -> PathBuf {
     destination.join(format!(
@@ -35,14 +37,14 @@ fn verify_committed(result: &PullResult, destination: &Path) -> Result<(), Bridg
         return Err(invalid_receipt());
     }
     let mut file = fs::File::open(&result.path)?;
-    let mut prefix = [0_u8; 4];
-    file.read_exact(&mut prefix)?;
-    if prefix != PACK_START {
+    let mut prefix = [0_u8; PROBE_BYTES];
+    let prefix_bytes = file.read(&mut prefix)?;
+    if MediaFormat::detect(&prefix[..prefix_bytes]).is_none() {
         return Err(invalid_receipt());
     }
     let mut digest = Sha256::new();
-    digest.update(prefix);
-    let mut bytes = 4_u64;
+    digest.update(&prefix[..prefix_bytes]);
+    let mut bytes = prefix_bytes as u64;
     let mut buffer = vec![0_u8; 64 * 1024];
     loop {
         let read = file.read(&mut buffer)?;

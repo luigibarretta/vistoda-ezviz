@@ -79,14 +79,24 @@ vistoda_start_child() {
     test "$#" -gt 0 || vistoda_fail 'vistoda_start_child expects a command'
     test -z "${VISTODA_CHILD_PID:-}" ||
         vistoda_fail 'a managed child is already running'
-    "$@" &
+    # Supervisor authority belongs only to this bootstrap, never the provider.
+    (unset SUPERVISOR_TOKEN; exec "$@") &
     VISTODA_CHILD_PID=$!
-    trap 'vistoda_stop_child' INT TERM
+    trap 'vistoda_stop_child; exit 130' INT
+    trap 'vistoda_stop_child; exit 143' TERM
+    trap 'vistoda_stop_child' EXIT
 }
 
 vistoda_stop_child() {
     if test -n "${VISTODA_CHILD_PID:-}"; then
         kill -TERM "${VISTODA_CHILD_PID}" 2>/dev/null || true
+        vistoda_stop_attempt=0
+        while kill -0 "${VISTODA_CHILD_PID}" 2>/dev/null; do
+            test "${vistoda_stop_attempt}" -lt 10 || break
+            sleep 1
+            vistoda_stop_attempt=$((vistoda_stop_attempt + 1))
+        done
+        kill -KILL "${VISTODA_CHILD_PID}" 2>/dev/null || true
         wait "${VISTODA_CHILD_PID}" 2>/dev/null || true
         VISTODA_CHILD_PID=
     fi
@@ -125,14 +135,14 @@ vistoda_wait_for_health() {
 
 vistoda_supervisor_app_info() {
     vistoda_require_supervisor_token
-    curl -fsS --retry 5 --retry-all-errors \
+    curl -fsS --connect-timeout 3 --max-time 10 --retry 2 --retry-max-time 30 --retry-all-errors \
         -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
         http://supervisor/addons/self/info
 }
 
 vistoda_publish_discovery() {
     vistoda_require_supervisor_token
-    curl -fsS --retry 5 --retry-all-errors \
+    curl -fsS --connect-timeout 3 --max-time 10 --retry 2 --retry-max-time 30 --retry-all-errors \
         -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
         -H 'Content-Type: application/json' \
         --data-binary @- http://supervisor/discovery >/dev/null
@@ -141,6 +151,8 @@ vistoda_publish_discovery() {
 vistoda_wait_child() {
     test -n "${VISTODA_CHILD_PID:-}" || vistoda_fail 'no managed child is running'
     vistoda_wait_pid=${VISTODA_CHILD_PID}
+    vistoda_wait_status=0
+    wait "${vistoda_wait_pid}" || vistoda_wait_status=$?
     VISTODA_CHILD_PID=
-    wait "${vistoda_wait_pid}"
+    return "${vistoda_wait_status}"
 }

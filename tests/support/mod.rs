@@ -55,6 +55,15 @@ impl TestSystem {
     }
 
     pub fn with_live_session_limit(max_live_session_seconds: u64) -> Self {
+        Self::configured(max_live_session_seconds, false)
+    }
+
+    #[allow(dead_code)]
+    pub fn with_encrypted_camera() -> Self {
+        Self::configured(90, true)
+    }
+
+    fn configured(max_live_session_seconds: u64, decrypt_video: bool) -> Self {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let token_path = directory.path().join("api-token");
         fs::write(&token_path, TOKEN).unwrap_or_else(|error| panic!("{error}"));
@@ -64,8 +73,10 @@ impl TestSystem {
             "front".into(),
             CameraConfig {
                 serial: "never-exposed".into(),
-                decrypt_video: false,
-                media_key_file: None,
+                channel: 1,
+                substream: false,
+                decrypt_video,
+                media_key_file: decrypt_video.then(|| directory.path().join("media-key")),
             },
         )]);
         let config = BridgeConfig {

@@ -5,11 +5,12 @@
 
 ## Decision
 
-MPEG-PS is the canonical upstream and recording representation. Interactive
-SceneTrove and Home Assistant clients receive a shared FFmpeg copy-remux to
-MPEG-TS; finite recordings remain MPEG-PS. The TS mux repeats PAT/PMT and H.264
-codec headers at keyframes so clients may join an already-running upstream.
-Snapshots are JPEG.
+Clear profiles use MPEG-PS upstream; compatible encrypted H.264/HEVC RTP
+profiles are decrypted into an MPEG-TS-compatible pipeline. Home Assistant
+receives shared copy-remuxed MPEG-TS. Finite recordings retain the actual PS or
+TS form and declare it in their manifest. The TS mux repeats PAT/PMT and codec
+headers at keyframes so clients may join an already-running upstream. Snapshots
+are JPEG.
 
 ## Consequences
 

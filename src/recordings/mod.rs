@@ -182,13 +182,17 @@ impl RecordingManager {
     }
 
     pub async fn media_path(&self, id: &str) -> Option<PathBuf> {
+        self.media(id).await.map(|(path, _)| path)
+    }
+
+    pub async fn media(&self, id: &str) -> Option<(PathBuf, String)> {
         let state = self.state.lock().await;
         let manifest = state.manifests.get(id)?;
         if manifest.status != "ready" {
             return None;
         }
-        let path = self.directory.join(format!("{id}.mpegps"));
-        path.is_file().then_some(path)
+        let path = recovery::media_path(&self.directory, manifest);
+        path.is_file().then(|| (path, manifest.media_type.clone()))
     }
 
     pub async fn acknowledge(&self, id: &str) -> Result<bool, BridgeError> {
@@ -204,7 +208,7 @@ impl RecordingManager {
             .iter()
             .find_map(|(key, value)| (value == id).then(|| key.clone()));
         if manifest.status == "ready" {
-            let path = self.directory.join(format!("{id}.mpegps"));
+            let path = recovery::media_path(&self.directory, &manifest);
             match fs::remove_file(path) {
                 Ok(()) => fs::File::open(&self.directory)?.sync_all()?,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}

@@ -2,8 +2,8 @@
 
 Report vulnerabilities privately to the repository owner; do not open a public
 issue containing credentials, signed URLs, camera serials, packet captures or
-video. Supported releases are the current `main` commit and the latest tagged
-minor release.
+video. The latest tagged release receives security fixes. Development commits
+are not release artifacts.
 
 Production rules:
 

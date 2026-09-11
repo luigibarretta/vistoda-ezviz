@@ -23,6 +23,7 @@ pub struct VtmSession {
     sequence: u16,
     info: StreamInfo,
     timeout: Duration,
+    last_keepalive: Instant,
 }
 
 impl VtmSession {
@@ -43,6 +44,7 @@ impl VtmSession {
                 sequence: 0,
                 info: StreamInfo::default(),
                 timeout: timeout_duration,
+                last_keepalive: Instant::now(),
             };
             session.start(redirect_key.as_deref()).await?;
             if let Some(result) = session.info.result.filter(|result| *result != 0) {
@@ -90,29 +92,50 @@ impl VtmSession {
     where
         F: FnMut(Vec<u8>) -> bool,
     {
-        let mut last_keepalive = Instant::now();
         loop {
-            if cancel.is_cancelled() {
+            let Some(payload) = self.next_payload(cancel, false).await? else {
+                return Ok(());
+            };
+            if !payload.is_empty() && !consume(payload) {
                 return Ok(());
             }
-            if last_keepalive.elapsed() >= Duration::from_secs(5) {
+        }
+    }
+
+    /// Return the next media payload while keeping the VTM session alive.
+    /// Encrypted media-channel packets are exposed only to the opt-in video
+    /// decryptor; encrypted control messages always fail closed.
+    pub async fn next_payload(
+        &mut self,
+        cancel: &CancellationToken,
+        allow_encrypted_stream: bool,
+    ) -> Result<Option<Vec<u8>>, BridgeError> {
+        loop {
+            if cancel.is_cancelled() {
+                return Ok(None);
+            }
+            if self.last_keepalive.elapsed() >= Duration::from_secs(5) {
                 self.keepalive(KEEPALIVE_REQUEST).await?;
-                last_keepalive = Instant::now();
+                self.last_keepalive = Instant::now();
             }
             let packet = tokio::select! {
-                () = cancel.cancelled() => return Ok(()),
+                () = cancel.cancelled() => return Ok(None),
                 packet = self.read_packet() => packet?,
             };
             if packet.message_code == KEEPALIVE_REQUEST {
                 self.keepalive(KEEPALIVE_RESPONSE).await?;
-                last_keepalive = Instant::now();
-            } else if packet.channel == CHANNEL_STREAM {
-                if !packet.body.is_empty() && !consume(packet.body) {
-                    return Ok(());
-                }
-            } else if packet.encrypted() {
+                self.last_keepalive = Instant::now();
+                continue;
+            }
+            if packet.channel == CHANNEL_STREAM
+                || (allow_encrypted_stream
+                    && packet.channel == crate::vtm::CHANNEL_ENCRYPTED_STREAM)
+            {
+                return Ok(Some(packet.body));
+            }
+            if packet.encrypted() {
                 return Err(BridgeError::Upstream(
-                    "encrypted VTM stream packets are unsupported".into(),
+                    "encrypted VTM control packet is unsupported".into(),
                 ));
             }
         }
@@ -156,42 +179,54 @@ impl VtmSession {
 }
 
 #[must_use]
-pub fn build_vtm_url(
-    host: &str,
-    port: u16,
-    serial: &str,
-    biz_url: &str,
-    token: &str,
-    timestamp_ms: i64,
-) -> String {
-    let query = biz_url
-        .split_once('?')
-        .map_or_else(|| biz_url.trim_start_matches('?'), |(_, query)| query);
+pub fn build_vtm_url(request: &VtmUrlRequest<'_>) -> String {
+    let query = request.biz_url.split_once('?').map_or_else(
+        || request.biz_url.trim_start_matches('?'),
+        |(_, query)| query,
+    );
     let mut params: BTreeMap<String, String> = form_urlencoded::parse(query.as_bytes())
         .into_owned()
         .collect();
     for (key, value) in [
-        ("dev", serial.to_owned()),
-        ("chn", "1".into()),
-        ("stream", "1".into()),
+        ("dev", request.serial.to_owned()),
+        ("chn", request.channel.to_string()),
+        (
+            "stream",
+            if request.substream {
+                "2".into()
+            } else {
+                "1".into()
+            },
+        ),
         ("cln", "9".into()),
         ("isp", "0".into()),
         ("auth", "1".into()),
-        ("ssn", token.to_owned()),
+        ("ssn", request.token.to_owned()),
         ("vip", "0".into()),
-        ("timestamp", timestamp_ms.to_string()),
+        ("timestamp", request.timestamp_ms.to_string()),
     ] {
         params.insert(key.into(), value);
     }
-    let host = if Ipv6Addr::from_str(host).is_ok() {
-        format!("[{host}]")
+    let host = if Ipv6Addr::from_str(request.host).is_ok() {
+        format!("[{}]", request.host)
     } else {
-        host.to_owned()
+        request.host.to_owned()
     };
     let query: String = form_urlencoded::Serializer::new(String::new())
         .extend_pairs(params)
         .finish();
-    format!("ysproto://{host}:{port}/live?{query}")
+    format!("ysproto://{host}:{}/live?{query}", request.port)
+}
+
+pub struct VtmUrlRequest<'a> {
+    pub host: &'a str,
+    pub port: u16,
+    pub serial: &'a str,
+    pub channel: u16,
+    pub substream: bool,
+    pub biz_url: &'a str,
+    pub token: &'a str,
+    pub timestamp_ms: i64,
 }
 
 fn endpoint(value: &str) -> Result<(String, u16), BridgeError> {
@@ -208,4 +243,30 @@ fn endpoint(value: &str) -> Result<(String, u16), BridgeError> {
             .port()
             .ok_or_else(|| BridgeError::Upstream("VTM URL omitted port".into()))?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{VtmUrlRequest, build_vtm_url};
+
+    #[test]
+    fn url_targets_exact_channel_and_only_changes_stream_profile() {
+        let url = build_vtm_url(&VtmUrlRequest {
+            host: "2001:db8::1",
+            port: 8554,
+            serial: "SERIAL",
+            channel: 7,
+            substream: true,
+            biz_url: "?source=1&substream=1&stream=1",
+            token: "secret-token",
+            timestamp_ms: 42,
+        });
+        assert!(url.starts_with("ysproto://[2001:db8::1]:8554/live?"));
+        let parsed = url::Url::parse(&url).unwrap_or_else(|error| panic!("{error}"));
+        let query: std::collections::BTreeMap<_, _> = parsed.query_pairs().into_owned().collect();
+        assert_eq!(query.get("chn").map(String::as_str), Some("7"));
+        assert_eq!(query.get("stream").map(String::as_str), Some("2"));
+        assert_eq!(query.get("substream").map(String::as_str), Some("1"));
+        assert_eq!(query.get("ssn").map(String::as_str), Some("secret-token"));
+    }
 }

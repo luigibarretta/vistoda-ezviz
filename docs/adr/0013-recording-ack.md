@@ -21,7 +21,7 @@ For ready media, the bridge removes the artifact, `fsync`s the spool directory,
 updates the journal atomically and persists a tombstone. Tombstones preserve the
 idempotency-key outcome across restart and are FIFO-bounded to 4096 entries.
 
-SceneTrove must verify the MPEG-PS prefix, expected byte count and SHA-256, write
+SceneTrove must verify the declared MPEG-PS/MPEG-TS prefix, expected byte count and SHA-256, write
 the local file, `fsync` it, atomically rename it and `fsync` its destination.
 It then writes and `fsync`s a receipt before ACK. Only a successful `204` permits
 receipt removal. Recovery finds the receipt and retries ACK without creating a

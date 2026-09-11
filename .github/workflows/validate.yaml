@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
   workflow_dispatch:
   schedule:
     - cron: "37 4 * * 1"
@@ -12,6 +13,21 @@ permissions:
   contents: read
 
 jobs:
+  provider-kit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: luigibarretta/lib-vistoda-provider-kit
+          ref: 4f6c74125a673cb9836471122ae0007938b86619
+          path: .ci/vistoda-provider-kit
+      - name: Verify exact bootstrap dependency and lifecycle
+        run: |
+          test "$(git -C .ci/vistoda-provider-kit rev-parse HEAD)" = "$(tr -d '[:space:]' < dependencies/vistoda-provider-kit.sha)"
+          cmp .ci/vistoda-provider-kit/dist/vistoda-app-bootstrap.sh packaging/home-assistant/vistoda-app-bootstrap.sh
+          sh .ci/vistoda-provider-kit/tests/bootstrap-test.sh
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:
@@ -47,8 +63,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build the app image at the declared version
+        # Runs on the same checkout as the tag-triggered release workflow.
         shell: bash
         run: |
+          sh scripts/check-release.sh
+          bash tests/release-preflight.sh
           version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
           test -n "${version}"
           docker build \

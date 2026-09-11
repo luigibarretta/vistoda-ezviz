@@ -11,11 +11,11 @@ credentials, continuously draining the camera battery, or transcoding video.
 1. **Contracts and safety** — accepted ADRs, threat model, OpenAPI contract,
    secret-redaction tests and bounded defaults.
 2. **Transport** — native Rust token refresh, VTM/VTDU, fresh snapshot and a
-   cancellable MPEG-PS producer. Offline tests use golden wire fixtures.
+   cancellable PS or decrypted RTP producer. Offline tests use golden wire fixtures.
 3. **Fan-out** — exactly one upstream per camera, bounded subscriber queues,
    slow-consumer eviction, idle shutdown and restart backoff.
-4. **Consumer media** — raw MPEG-PS for SceneTrove; a shared FFmpeg copy-remux
-   to MPEG-TS for Home Assistant; no video re-encode.
+4. **Consumer media** — manifest-typed PS/TS for SceneTrove; shared FFmpeg
+   copy-remux to MPEG-TS for Home Assistant; no video re-encode.
 5. **Finite capture** — idempotent, duration-bounded recordings, atomic publish,
    SHA-256 manifest, authenticated download and durable idempotent ACK.
 6. **Packaging** — rootless/read-only container, persistent token/recording
@@ -23,7 +23,7 @@ credentials, continuously draining the camera battery, or transcoding video.
 7. **Canary** — snapshot decode, bounded live stream, multi-consumer fan-out,
    disconnect cleanup, restart recovery and no secret-bearing logs.
 8. **Integration** — Home Assistant Generic Camera first; SceneTrove connector
-   imports MPEG-PS through its existing remux path. Automatic AI remains off
+   imports manifest-typed media through its existing remux path. Automatic AI remains off
    until its existing accuracy gates pass.
 
 ## Global quality gates

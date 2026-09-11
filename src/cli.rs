@@ -114,6 +114,7 @@ async fn serve_runtime(address: &str, config: BridgeConfig) -> Result<(), Bridge
         EzvizTransport::from_token_file(
             config.ezviz_token_file.clone(),
             config.upstream_timeout_seconds,
+            config.ffmpeg_path.clone(),
         )
         .await?,
     );

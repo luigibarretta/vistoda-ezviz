@@ -4,8 +4,11 @@ COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 RUN cargo build --locked --release --bins
 
+COPY packaging/collect-licenses.sh /usr/local/bin/collect-licenses
+RUN sh /usr/local/bin/collect-licenses /licenses
+
 FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
-ARG BUILD_VERSION=0.5.0
+ARG BUILD_VERSION=0.6.0
 ARG BUILD_ARCH=unknown
 LABEL io.hass.version="${BUILD_VERSION}" \
       io.hass.type="app" \
@@ -18,6 +21,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 bridge \
     && useradd --uid 10001 --gid bridge --no-create-home --shell /usr/sbin/nologin bridge
+COPY --from=builder /licenses /usr/share/doc/vistoda/dependencies
+COPY LICENSE NOTICE /usr/share/doc/vistoda/
 COPY --from=builder /source/target/release/ezviz-vtm-bridge /usr/local/bin/
 COPY packaging/home-assistant/run.sh /usr/local/bin/vistoda-app-run
 COPY packaging/home-assistant/vistoda-app-bootstrap.sh /usr/local/lib/vistoda-app-bootstrap

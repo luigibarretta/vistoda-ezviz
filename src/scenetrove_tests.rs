@@ -42,6 +42,7 @@ async fn status() -> Json<Value> {
 async fn media() -> Response {
     Response::builder()
         .status(StatusCode::OK)
+        .header("content-type", "video/mpeg")
         .body(Body::from(MEDIA))
         .unwrap_or_else(|error| panic!("{error}"))
 }
@@ -66,6 +67,7 @@ fn manifest() -> Value {
         "bytes":MEDIA.len(),
         "sha256":hex::encode(Sha256::digest(MEDIA)),
         "error_code":null
+        ,"media_type":"video/mpeg"
     })
 }
 
@@ -114,7 +116,7 @@ async fn ack_happens_only_after_local_commit() {
     let request = request(directory.path(), url, "normal-commit-001");
     let expected = request
         .destination
-        .join("hiv20260814T010203Z-00000000-0000-4000-8000-000000000001.mp4");
+        .join("hiv20260814T010203Z-00000000-0000-4000-8000-000000000001.mpegps");
     *state
         .expected_local
         .lock()

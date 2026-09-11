@@ -11,6 +11,7 @@ mod enrollment;
 pub mod error;
 pub mod hub;
 mod hub_failure;
+mod media_format;
 pub mod metrics;
 mod pagination;
 mod recording_playback;

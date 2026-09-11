@@ -8,8 +8,8 @@
 Home Assistant uses Generic Camera with Basic authentication and the shared
 copy-remuxed MPEG-TS endpoint. SceneTrove uses a finite pull adapter that
 requires a caller-owned idempotency key, rejects redirects, bounds JSON/media,
-verifies MPEG-PS pack start, byte count and SHA-256, and publishes with atomic
-rename into a registered `mpeg_ps` device folder. It then persists a recovery
+verifies the manifest-declared MPEG-PS/MPEG-TS prefix, byte count and SHA-256,
+and publishes with atomic rename into a registered device folder. It then persists a recovery
 receipt and acknowledges the recording as defined by ADR-0013.
 
 ## Consequences

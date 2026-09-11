@@ -21,10 +21,15 @@ modify camera firmware.
 
 ## Capabilities
 
-- canonical MPEG-PS (`video/mpeg`) for SceneTrove ingestion;
+- canonical MPEG-PS (`video/mpeg`) for clear-media cameras and SceneTrove;
+- opt-in AES-decrypted H.264/HEVC RTP for compatible encrypted VTM cameras,
+  exposed to consumers as MPEG-TS without video re-encoding;
+- complete bounded VTM inventory pagination, exact serial/channel selection and
+  optional NVR channel/substream configuration;
 - copy-remuxed MPEG-TS (`video/mp2t`) for Home Assistant and media clients;
 - fresh JPEG snapshots with short request coalescing;
-- finite MPEG-PS recordings with immutable manifests and SHA-256 digests;
+- finite media-typed MPEG-PS/MPEG-TS recordings with immutable manifests and
+  SHA-256 digests;
 - server-paginated archive inventory, private spool metadata and on-demand
   browser MP4 playback;
 - one lazy upstream shared by multiple bounded consumers;
@@ -37,9 +42,9 @@ modify camera firmware.
 EZVIZ VTM/VTDU
       |
       v
-native Rust transport -> bounded raw hub -> MPEG-PS / recordings / snapshots
-                              |
-                              +-> shared FFmpeg copy-remux -> MPEG-TS
+native Rust transport -> bounded PS or decrypted-RTP/TS hub -> recordings/snapshots
+                                      |
+                                      +-> shared FFmpeg copy-remux -> MPEG-TS
 ```
 
 The transport and operational tooling implement the required VTM/VTDU wire
@@ -78,12 +83,12 @@ for canaries, monitoring, backup and rollback.
 | `GET /healthz` | liveness and version | none |
 | `GET /metrics` | low-cardinality metrics | bearer |
 | `GET /v1/cameras/{camera}/snapshot.jpg` | JPEG snapshot | bearer or Basic |
-| `GET /v1/cameras/{camera}/live.mpegps` | shared MPEG-PS | bearer |
+| `GET /v1/cameras/{camera}/live.mpegps` | shared MPEG-PS; clear-media cameras only | bearer |
 | `GET /v1/cameras/{camera}/live.ts` | shared MPEG-TS | bearer or Basic |
 | `POST /v1/cameras/{camera}/recordings` | finite capture | bearer |
 | `GET /v1/recordings?page=&page_size=&camera=` | paginated inventory and private spool descriptor | bearer |
 | `GET /v1/recordings/{id}` | immutable recording manifest | bearer |
-| `GET /v1/recordings/{id}/media` | local MPEG-PS media | bearer |
+| `GET /v1/recordings/{id}/media` | local MPEG-PS or MPEG-TS declared by manifest | bearer |
 | `GET /v1/recordings/{id}/playback.mp4` | fragmented MP4 browser playback | bearer |
 | `DELETE /v1/recordings/{id}` | idempotent spool ACK after local commit | bearer |
 
@@ -149,3 +154,16 @@ Copyright 2026 Luigi Barretta. Licensed under Apache-2.0; see [`LICENSE`](LICENS
 and [`NOTICE`](NOTICE). pyEzvizApi, ezviz_hp7 and LE-EZVIZ-VS are credited as
 protocol research and compatibility evidence only; no source is copied or
 linked from them.
+
+The encrypted-RTP and full-inventory design was also informed by the
+MIT-licensed `Bahrombekk/cloud-cam-viewer` commit pinned in
+[`docs/RESEARCH.md`](docs/RESEARCH.md). Vistoda keeps a bounded, on-demand Rust
+implementation; it does not adopt permanent camera processes, a one-hour token
+cache or Python monkey patches.
+
+## Installation and recovery
+
+See the [English maintenance guide](https://github.com/luigibarretta/vistoda-addons/blob/main/OPERATIONS.md)
+and [Italian guide](https://github.com/luigibarretta/vistoda-addons/blob/main/OPERATIONS.it.md)
+for prerequisites, discovery, reconnection, updates, rollback, restore and uninstall.
+Images retain licenses/notices under `/usr/share/doc/vistoda`.

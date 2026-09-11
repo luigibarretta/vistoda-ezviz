@@ -1,10 +1,9 @@
 use std::{path::PathBuf, sync::Arc};
 
 use async_trait::async_trait;
-use chrono::Utc;
 use reqwest::{Client, Method, StatusCode};
 use serde_json::Value;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -13,21 +12,27 @@ use crate::{
     storage::{atomic_write_json, ensure_private_regular},
     transport::{
         CameraTransport, ChunkConsumer, EzvizToken,
-        http::{find_resource, jwt_sign, meta_code, mobile_headers, required_string, value_u16},
-        image, timeout_duration,
+        http::{meta_code, mobile_headers, required_string},
+        image, timeout_duration, video_pipeline,
     },
-    vtm::{VtmSession, build_vtm_url},
+    vtm::VtmSession,
 };
 
 pub struct EzvizTransport {
     client: Client,
-    token: RwLock<EzvizToken>,
+    pub(super) token: RwLock<EzvizToken>,
     token_path: PathBuf,
     timeout_seconds: u64,
+    pub(super) allocation_lock: Mutex<()>,
+    ffmpeg_path: PathBuf,
 }
 
 impl EzvizTransport {
-    pub async fn from_token_file(path: PathBuf, timeout_seconds: u64) -> Result<Self, BridgeError> {
+    pub async fn from_token_file(
+        path: PathBuf,
+        timeout_seconds: u64,
+        ffmpeg_path: PathBuf,
+    ) -> Result<Self, BridgeError> {
         let raw = ensure_private_regular(&path, 20)?;
         let token: EzvizToken = serde_json::from_str(&raw)
             .map_err(|_| BridgeError::Configuration("EZVIZ token file is invalid".into()))?;
@@ -40,6 +45,8 @@ impl EzvizTransport {
             token: RwLock::new(token),
             token_path: path,
             timeout_seconds,
+            allocation_lock: Mutex::new(()),
+            ffmpeg_path,
         };
         transport.refresh_session().await?;
         transport.ensure_service_urls().await?;
@@ -97,7 +104,7 @@ impl EzvizTransport {
         Ok(())
     }
 
-    async fn api_json(
+    pub(super) async fn api_json(
         &self,
         method: Method,
         path: &str,
@@ -127,81 +134,17 @@ impl EzvizTransport {
         Err(BridgeError::Authentication)
     }
 
-    fn request(&self, method: Method, url: &str, token: &EzvizToken) -> reqwest::RequestBuilder {
+    pub(super) fn request(
+        &self,
+        method: Method,
+        url: &str,
+        token: &EzvizToken,
+    ) -> reqwest::RequestBuilder {
         let mut headers = mobile_headers(token.feature_code.as_deref().unwrap_or(""));
         if let Ok(value) = token.session_id.parse() {
             headers.insert("sessionid", value);
         }
         self.client.request(method, url).headers(headers)
-    }
-
-    async fn cloud_stream_url(&self, serial: &str) -> Result<String, BridgeError> {
-        let page = self
-            .api_json(
-                Method::GET,
-                "/v3/userdevices/v1/resources/pagelist",
-                &[
-                    ("groupId", "-1".into()),
-                    ("limit", "50".into()),
-                    ("offset", "0".into()),
-                    ("filter", "VTM".into()),
-                ],
-            )
-            .await?;
-        let resource = find_resource(&page, serial)?;
-        let resource_id = required_string(resource, "resourceId")?;
-        let biz_url = resource
-            .get("streamBizUrl")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        // The VTDU token is issued for the following VTM allocation request.
-        // Preserve the vendor client's verified ordering: pagelist, token,
-        // then refreshed server metadata. Concurrent requests can bind the
-        // one-shot token to a different allocation and yield an empty stream.
-        let vtdu = self.vtdu_token().await?;
-        let server = self
-            .api_json(Method::GET, &format!("/v3/streaming/vtm/{serial}/1"), &[])
-            .await?;
-        let server = server
-            .get("streamServerConfig")
-            .or_else(|| page.get("VTM").and_then(|value| value.get(&resource_id)))
-            .ok_or_else(|| BridgeError::Upstream("VTM server metadata is missing".into()))?;
-        let host = ["externalIp", "domain", "internalIp"]
-            .iter()
-            .find_map(|key| server.get(*key).and_then(Value::as_str))
-            .ok_or_else(|| BridgeError::Upstream("VTM server host is missing".into()))?;
-        let port = value_u16(server.get("port"))?;
-        Ok(build_vtm_url(
-            host,
-            port,
-            serial,
-            biz_url,
-            &vtdu,
-            Utc::now().timestamp_millis(),
-        ))
-    }
-
-    async fn vtdu_token(&self) -> Result<String, BridgeError> {
-        let token = self.token.read().await.clone();
-        let sign = jwt_sign(&token.session_id)?;
-        let url = format!("{}/vtdutoken2", token.auth_address()?);
-        let response = self
-            .request(Method::GET, &url, &token)
-            .query(&[("ssid", &token.session_id), ("sign", &sign)])
-            .send()
-            .await?;
-        let status = response.status();
-        let value: Value = response.json().await?;
-        if !status.is_success() || !success_code(value.get("retcode")) {
-            return Err(BridgeError::Upstream("VTDU token request failed".into()));
-        }
-        value
-            .get("tokens")
-            .and_then(Value::as_array)
-            .and_then(|tokens| tokens.first())
-            .and_then(Value::as_str)
-            .map(str::to_owned)
-            .ok_or_else(|| BridgeError::Upstream("VTDU response omitted its token".into()))
     }
 
     async fn camera_key(&self, serial: &str) -> Result<String, BridgeError> {
@@ -229,9 +172,32 @@ impl EzvizTransport {
         }
         required_string(&value, "encryptkey")
     }
+
+    async fn stream_encrypted_video(
+        &self,
+        camera: &CameraConfig,
+        cancel: CancellationToken,
+        output: Arc<dyn ChunkConsumer>,
+    ) -> Result<(), BridgeError> {
+        let key_path = camera.media_key_file.as_ref().ok_or_else(|| {
+            BridgeError::Configuration("encrypted camera has no verification-code file".into())
+        })?;
+        let verification_code = ensure_private_regular(key_path, 1)?;
+        let url = self.cloud_stream_url(camera).await?;
+        let session = VtmSession::connect(url, timeout_duration(self.timeout_seconds)).await?;
+        video_pipeline::copy_as_mpeg_ts(
+            session,
+            &verification_code,
+            &self.ffmpeg_path,
+            self.timeout_seconds,
+            cancel,
+            output,
+        )
+        .await
+    }
 }
 
-fn success_code(value: Option<&Value>) -> bool {
+pub(super) fn success_code(value: Option<&Value>) -> bool {
     value.is_some_and(|value| value.as_i64() == Some(0) || value.as_str() == Some("0"))
 }
 
@@ -268,11 +234,9 @@ impl CameraTransport for EzvizTransport {
         output: Arc<dyn ChunkConsumer>,
     ) -> Result<(), BridgeError> {
         if camera.decrypt_video {
-            return Err(BridgeError::Upstream(
-                "continuous encrypted video is not supported".into(),
-            ));
+            return self.stream_encrypted_video(camera, cancel, output).await;
         }
-        let url = self.cloud_stream_url(&camera.serial).await?;
+        let url = self.cloud_stream_url(camera).await?;
         let mut session = VtmSession::connect(url, timeout_duration(self.timeout_seconds)).await?;
         session
             .copy_payloads(&cancel, |chunk| output.consume(chunk))

@@ -73,9 +73,10 @@ The durable capture workflow is:
    `Idempotency-Key`, and `{"duration_seconds": N}`.
 2. Poll the manifest until `ready` or `failed`.
 3. Download `/v1/recordings/{id}/media` to a temporary file.
-4. Verify byte count, SHA-256 and MPEG-PS pack start.
-5. Atomically publish it into the registered device archive with an `hiv*.mp4`
-   name. SceneTrove's `mpeg_ps` profile performs the existing remux.
+4. Verify byte count, SHA-256 and the MPEG-PS/MPEG-TS prefix declared by the
+   recording manifest.
+5. Atomically publish it with the matching `.mpegps` or `.ts` extension.
+   SceneTrove's media profile performs its existing remux.
 6. Persist and `fsync` a local receipt, then send idempotent
    `DELETE /v1/recordings/{id}`. A `204` proves the remote spool is released or
    was already released. Remove and `fsync` the receipt only after that ACK.
@@ -87,7 +88,7 @@ The production image also contains the reference adapter at
 `/usr/local/bin/scenetrove-pull`. Run that same immutable image with its
 entrypoint overridden, a read-only API-token mount, and only the destination
 device folder writable. The adapter rejects redirects and credential-bearing
-URLs, bounds all responses, verifies the MPEG-PS pack prefix, byte count and
+URLs, bounds all responses, verifies the declared MPEG-PS/MPEG-TS prefix, byte count and
 SHA-256, then atomically publishes the finished file. Its durable receipt
 closes the crash window after local commit: a restart retries only the ACK and
 never creates duplicate media. Active captures return `409 recording_active`;
@@ -111,3 +112,10 @@ existing SceneTrove archives.
 Back up only the encrypted/secret-managed EZVIZ session token when operationally
 required. Recording spool data is transient; finished SceneTrove imports own
 their retention. Never commit `data/`, `secrets/`, tokens or camera serials.
+
+For an NVR, configure the exact channel (1–256); a standalone camera normally
+uses channel 1. `substream` selects the lower-bandwidth profile when supported.
+Encrypted RTP is opt-in per camera and requires a mode-0600 verification-code
+file. The current decryptor supports compatible H.264/HEVC RTP profiles; it
+fails closed for encrypted MPEG-PS/MPEG-TS variants rather than emitting cipher
+text. Keep the official app available until a canary proves a device profile.

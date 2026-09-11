@@ -21,6 +21,15 @@ pub(super) async fn raw_stream(
     State(runtime): State<Arc<Runtime>>,
     Path(camera): Path<String>,
 ) -> Result<Response, BridgeError> {
+    if runtime
+        .config
+        .cameras
+        .get(&camera)
+        .ok_or(BridgeError::CameraNotFound)?
+        .decrypt_video
+    {
+        return Err(BridgeError::UnsupportedMedia);
+    }
     let hub = Arc::clone(
         runtime
             .raw

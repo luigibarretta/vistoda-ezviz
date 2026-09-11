@@ -32,7 +32,7 @@ impl RecordingManifest {
             completed_at: None,
             requested_duration_seconds: duration,
             actual_duration_seconds: None,
-            media_type: "video/mpeg".into(),
+            media_type: "application/octet-stream".into(),
             bytes: None,
             sha256: None,
             error_code: None,

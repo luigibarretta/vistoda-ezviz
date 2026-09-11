@@ -1,8 +1,11 @@
 mod client;
+mod client_stream;
 mod enroll;
 mod http;
 mod image;
 mod token;
+mod video;
+mod video_pipeline;
 
 pub use client::EzvizTransport;
 pub use enroll::{EnrollmentState, PendingEnrollment, begin, enroll};

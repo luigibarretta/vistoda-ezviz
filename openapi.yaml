@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: EZVIZ VTM Bridge
-  version: 1.4.0
+  version: 1.5.0
   description: Internal bounded media contract for Home Assistant and SceneTrove.
 servers: [{url: http://ezviz-vtm-bridge:8765}]
 paths:
@@ -104,10 +104,11 @@ paths:
         - $ref: "#/components/parameters/Camera"
       responses:
         "200":
-          description: Chunked canonical MPEG program stream
+          description: Chunked canonical MPEG program stream for clear-media cameras
           content:
             video/mpeg:
               schema: {type: string, contentEncoding: binary}
+        "409": {description: Camera exposes encrypted RTP and only the live.ts representation is available}
   /v1/cameras/{camera}/live.ts:
     get:
       security:
@@ -215,9 +216,11 @@ paths:
         - $ref: "#/components/parameters/RecordingId"
       responses:
         "200":
-          description: Immutable MPEG-PS artifact
+          description: Immutable MPEG-PS or MPEG-TS artifact as declared by its manifest
           content:
             video/mpeg:
+              schema: {type: string, contentEncoding: binary}
+            video/mp2t:
               schema: {type: string, contentEncoding: binary}
         "404": {$ref: "#/components/responses/NotFound"}
   /v1/recordings/{recording_id}/playback.mp4:
@@ -265,14 +268,7 @@ components:
     Recording:
       type: object
       additionalProperties: false
-      required:
-        - schema_version
-        - recording_id
-        - camera
-        - status
-        - requested_at
-        - requested_duration_seconds
-        - media_type
+      required: [schema_version, recording_id, camera, status, requested_at, requested_duration_seconds, media_type]
       properties:
         schema_version: {type: integer, const: 1}
         recording_id: {type: string, format: uuid}
@@ -283,7 +279,7 @@ components:
         completed_at: {type: [string, "null"], format: date-time}
         requested_duration_seconds: {type: integer}
         actual_duration_seconds: {type: [number, "null"]}
-        media_type: {type: string, const: video/mpeg}
+        media_type: {type: string, enum: [video/mpeg, video/mp2t]}
         bytes: {type: [integer, "null"]}
         sha256: {type: [string, "null"]}
         error_code: {type: [string, "null"]}

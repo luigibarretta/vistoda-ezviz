@@ -111,9 +111,9 @@ async fn download_recording(
     State(runtime): State<Arc<Runtime>>,
     Path(id): Path<String>,
 ) -> Result<Response, StatusCode> {
-    let path = runtime
+    let (path, media_type) = runtime
         .recordings
-        .media_path(&id)
+        .media(&id)
         .await
         .ok_or(StatusCode::NOT_FOUND)?;
     let file = tokio::fs::File::open(path)
@@ -121,7 +121,11 @@ async fn download_recording(
         .map_err(|_| StatusCode::NOT_FOUND)?;
     let mut result = response(
         StatusCode::OK,
-        "video/mpeg",
+        if media_type == "video/mp2t" {
+            "video/mp2t"
+        } else {
+            "video/mpeg"
+        },
         Body::from_stream(ReaderStream::new(file)),
     );
     no_store(result.headers_mut());

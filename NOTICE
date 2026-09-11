@@ -4,3 +4,13 @@ Copyright 2026 Luigi Barretta
 The pyEzvizApi, ezviz_hp7 and LE-EZVIZ-VS projects are credited as protocol
 research and compatibility evidence only. No source code from those projects
 is included in or linked by this distribution.
+
+Encrypted RTP media handling and complete VTM resource pagination were informed
+by Bahrombekk/cloud-cam-viewer, pinned during research at commit
+6ff4ad280dc18061cf073fcd9eb7931ab28de34a (MIT License). Vistoda contains an
+independent Rust implementation and preserves this attribution.
+Copyright (c) 2026 Cloud CCTV Viewer contributors.
+
+Includes the Apache-2.0 Vistoda Provider Kit bootstrap, Copyright 2026 Luigi
+Barretta. Image distributions preserve project notices and Cargo dependency
+license files under /usr/share/doc/vistoda.

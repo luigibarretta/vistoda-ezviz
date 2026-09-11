@@ -50,6 +50,22 @@ async fn live_stream_ends_at_the_configured_session_limit() {
 }
 
 #[tokio::test]
+async fn encrypted_camera_rejects_mpeg_ps_but_keeps_ts_contract() {
+    let system = TestSystem::with_encrypted_camera();
+    let response = router(Arc::clone(&system.runtime))
+        .oneshot(TestSystem::request(
+            "GET",
+            "/v1/cameras/front/live.mpegps",
+            Body::empty(),
+        ))
+        .await
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(json(response).await["error"], "unsupported_media");
+    system.runtime.close().await;
+}
+
+#[tokio::test]
 async fn health_is_public_and_media_requires_authentication() {
     let system = TestSystem::new();
     let app = router(Arc::clone(&system.runtime));

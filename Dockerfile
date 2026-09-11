@@ -13,8 +13,11 @@ COPY src ./src
 RUN cargo build --release --locked --bins \
     && strip target/release/ezviz-vtm-bridge target/release/scenetrove-pull
 
+COPY packaging/collect-licenses.sh /usr/local/bin/collect-licenses
+RUN sh /usr/local/bin/collect-licenses /licenses
+
 FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
-ARG VERSION=0.5.0
+ARG VERSION=0.6.0
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="Vistoda EZVIZ" \
       org.opencontainers.image.version=$VERSION \
@@ -26,6 +29,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 bridge \
     && useradd --uid 10001 --gid bridge --no-create-home --home-dir /nonexistent bridge
+COPY --from=builder /licenses /usr/share/doc/vistoda/dependencies
+COPY LICENSE NOTICE /usr/share/doc/vistoda/
 COPY --from=builder --chmod=0555 /build/target/release/ezviz-vtm-bridge /usr/local/bin/
 COPY --from=builder --chmod=0555 /build/target/release/scenetrove-pull /usr/local/bin/
 USER 10001:10001

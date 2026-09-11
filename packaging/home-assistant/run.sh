@@ -13,10 +13,17 @@ mkdir -p "${data_dir}/recordings"
 vistoda_prepare_data_dir bridge:bridge "${data_dir}"
 
 alias_name="$(jq -er '.alias | strings | select(test("^[A-Za-z0-9_-]+$"))' "${options_file}")"
-camera_serial="$(jq -er '.camera_serial | strings | select(test("^[A-Za-z0-9]+$"))' "${options_file}")"
+camera_serial="$(jq -er '.camera_serial | strings | select(test("^[A-Za-z0-9]+$"))' "${options_file}")" || {
+    vistoda_fail 'Enter the camera serial from EZVIZ device information in app Configuration, save, then start again. Use the serial, not the verification code.'
+    exit 1
+}
+camera_channel="$(jq -er '.camera_channel // 1 | numbers | select(. >= 1 and . <= 256)' "${options_file}")"
+substream="$(jq -er '.substream // false | booleans' "${options_file}")"
 vistoda_ensure_hex_token "${token_file}" bridge:bridge ''
 jq -n --arg alias "${alias_name}" --arg serial "${camera_serial}" \
-    '{($alias): {serial: $serial, decrypt_video: false}}' >"${cameras_file}"
+    --argjson channel "${camera_channel}" --argjson substream "${substream}" \
+    '{($alias): {serial: $serial, channel: $channel, substream: $substream,
+      decrypt_video: false}}' >"${cameras_file}"
 chown bridge:bridge "${cameras_file}"
 chown -R bridge:bridge "${data_dir}/recordings"
 chmod 0700 "${data_dir}/recordings"

@@ -8,9 +8,17 @@ use crate::error::BridgeError;
 #[serde(deny_unknown_fields)]
 pub struct CameraConfig {
     pub serial: String,
+    #[serde(default = "default_channel")]
+    pub channel: u16,
+    #[serde(default)]
+    pub substream: bool,
     #[serde(default)]
     pub decrypt_video: bool,
     pub media_key_file: Option<PathBuf>,
+}
+
+const fn default_channel() -> u16 {
+    1
 }
 
 #[derive(Clone, Debug)]
@@ -105,6 +113,11 @@ fn validate_cameras(cameras: &BTreeMap<String, CameraConfig>) -> Result<(), Brid
                 "camera {alias} has no serial"
             )));
         }
+        if !(1..=256).contains(&camera.channel) {
+            return Err(BridgeError::Configuration(format!(
+                "camera {alias} channel must be between 1 and 256"
+            )));
+        }
         if camera.decrypt_video && camera.media_key_file.is_none() {
             return Err(BridgeError::Configuration(format!(
                 "camera {alias} requires media_key_file when decrypt_video is enabled"
@@ -146,6 +159,8 @@ mod tests {
             "../serial".into(),
             CameraConfig {
                 serial: "secret".into(),
+                channel: 1,
+                substream: false,
                 decrypt_video: false,
                 media_key_file: None,
             },

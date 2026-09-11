@@ -8,8 +8,6 @@ pub(super) const ARGUMENTS: &[&str] = &[
     "1000000",
     "-fflags",
     "+genpts+nobuffer",
-    "-f",
-    "mpeg",
     "-i",
     "pipe:0",
     "-map",
@@ -37,6 +35,7 @@ mod tests {
 
     #[test]
     fn transport_and_codec_headers_repeat_for_late_subscribers() {
+        assert!(!ARGUMENTS.windows(2).any(|pair| pair == ["-f", "mpeg"]));
         for required in [
             ["-bsf:v", "extract_extradata,dump_extra=freq=keyframe"],
             ["-mpegts_flags", "+resend_headers"],

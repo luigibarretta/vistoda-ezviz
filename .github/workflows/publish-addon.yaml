@@ -3,17 +3,33 @@ name: publish-home-assistant-app
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
 
 env:
   ARCHITECTURES: '["amd64", "aarch64"]'
   IMAGE_NAME: vistoda-ezviz-addon
 
+concurrency:
+  group: release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
 jobs:
+  validation:
+    uses: ./.github/workflows/validate.yaml
+    secrets: inherit
+    permissions:
+      contents: read
+      checks: write
+      issues: write
+
   init:
+    needs: validation
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+      packages: read
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -24,11 +40,17 @@ jobs:
         shell: bash
         run: echo "value=$(sed -n 's/^version = \"\(.*\)\"/\1/p' Cargo.toml | head -1)" >> "$GITHUB_OUTPUT"
       - name: Verify release tag
-        if: github.ref_type == 'tag'
         env:
           REF_NAME: ${{ github.ref_name }}
           VERSION: ${{ steps.version.outputs.value }}
-        run: test "${REF_NAME}" = "v${VERSION}"
+        run: |
+          test "${REF_NAME}" = "v${VERSION}"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/${REF_NAME}^{commit}")"
+      - name: Reject an existing immutable manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh scripts/assert-image-absent.sh "ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}" "${{ steps.version.outputs.value }}"
       - id: matrix
         uses: home-assistant/builder/actions/prepare-multi-arch-matrix@4de35182ce1e329181bffcbcc84d33db5e2c7e10 # 2026.06.0
         with:
@@ -47,6 +69,10 @@ jobs:
       matrix: ${{ fromJSON(needs.init.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Reject an existing immutable architecture image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh scripts/assert-image-absent.sh "${{ matrix.image }}" "${{ needs.init.outputs.version }}"
       - uses: home-assistant/builder/actions/build-image@4de35182ce1e329181bffcbcc84d33db5e2c7e10 # 2026.06.0
         with:
           arch: ${{ matrix.arch }}
@@ -56,7 +82,6 @@ jobs:
           image: ${{ matrix.image }}
           image-tags: |
             ${{ needs.init.outputs.version }}
-            latest
           push: "true"
           version: ${{ needs.init.outputs.version }}
 
@@ -76,7 +101,6 @@ jobs:
           image-name: ${{ env.IMAGE_NAME }}
           image-tags: |
             ${{ needs.init.outputs.version }}
-            latest
       - name: Verify published platforms
         run: |
           docker buildx imagetools inspect "ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ needs.init.outputs.version }}" | grep -F 'linux/amd64'

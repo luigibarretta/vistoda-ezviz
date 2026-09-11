@@ -16,3 +16,4 @@
 - [ADR-0014 — Vistoda product identity](0014-vistoda-product-identity.md)
 - [ADR-0015 — Home Assistant app packaging](0015-home-assistant-app-packaging.md)
 - [ADR-0016 — Vistoda archive, microSD and talk boundaries](0016-vistoda-archive-boundaries.md)
+- [ADR-0017 — Bounded encrypted RTP compatibility](0017-encrypted-rtp.md)

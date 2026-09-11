@@ -6,10 +6,10 @@
 ## Decision
 
 SceneTrove requests bounded recordings with an idempotency key. The bridge
-publishes an immutable MPEG-PS artifact plus a versioned manifest containing
+publishes an immutable MPEG-PS or MPEG-TS artifact plus a versioned manifest containing
 alias, UTC boundaries, duration, byte count, SHA-256 and media type. SceneTrove
 pulls the artifact and owns archival retention after successful import.
-After byte, MPEG-PS and SHA-256 validation it atomically publishes and `fsync`s
+After media-type, prefix, byte and SHA-256 validation it atomically publishes and `fsync`s
 the local file and a recovery receipt. Only then does it call idempotent
 `DELETE /v1/recordings/{id}` to release the remote spool. The bridge answers
 `204` for an existing, already acknowledged or unknown ID and `409` while the

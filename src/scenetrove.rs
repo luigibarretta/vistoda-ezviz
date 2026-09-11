@@ -16,11 +16,11 @@ use tokio::{
 
 use crate::{
     error::BridgeError,
+    media_format::{MediaFormat, PROBE_BYTES},
     scenetrove_receipt::{receipt_path, recover_receipt, remove_receipt},
     storage::{atomic_write_json, ensure_private_regular},
 };
 
-const PACK_START: &[u8] = b"\x00\x00\x01\xba";
 const JSON_LIMIT: usize = 1024 * 1024;
 
 #[derive(Clone, Debug)]
@@ -51,6 +51,7 @@ struct Manifest {
     bytes: Option<u64>,
     sha256: Option<String>,
     error_code: Option<String>,
+    media_type: String,
 }
 
 pub async fn pull(request: PullRequest) -> Result<PullResult, BridgeError> {
@@ -119,7 +120,12 @@ pub async fn pull(request: PullRequest) -> Result<PullResult, BridgeError> {
     let stamp = DateTime::parse_from_rfc3339(completed)
         .map_err(|_| BridgeError::Upstream("recording completion time is invalid".into()))?
         .format("%Y%m%dT%H%M%SZ");
-    let filename = format!("hiv{stamp}-{}.mp4", manifest.recording_id);
+    let media_format = MediaFormat::from_media_type(&manifest.media_type)?;
+    let filename = format!(
+        "hiv{stamp}-{}.{}",
+        manifest.recording_id,
+        media_format.extension()
+    );
     let final_path = request.destination.join(&filename);
     let partial = request
         .destination
@@ -134,7 +140,18 @@ pub async fn pull(request: PullRequest) -> Result<PullResult, BridgeError> {
     if response.status() != StatusCode::OK {
         return Err(BridgeError::Upstream("media download failed".into()));
     }
-    let media_result = write_media(response, &partial, request.max_bytes).await;
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .unwrap_or_default();
+    if content_type != manifest.media_type {
+        return Err(BridgeError::Upstream(
+            "recording response media type does not match its manifest".into(),
+        ));
+    }
+    let media_result = write_media(response, &partial, request.max_bytes, media_format).await;
     let (actual_bytes, actual_digest) = match media_result {
         Ok(result) => result,
         Err(error) => {
@@ -184,6 +201,7 @@ async fn write_media(
     response: reqwest::Response,
     path: &Path,
     max_bytes: u64,
+    media_format: MediaFormat,
 ) -> Result<(u64, String), BridgeError> {
     let mut file = OpenOptions::new()
         .write(true)
@@ -203,16 +221,16 @@ async fn write_media(
                 "recording exceeded download byte bound".into(),
             ));
         }
-        if prefix.len() < PACK_START.len() {
-            prefix.extend_from_slice(&chunk[..chunk.len().min(PACK_START.len() - prefix.len())]);
+        if prefix.len() < PROBE_BYTES {
+            prefix.extend_from_slice(&chunk[..chunk.len().min(PROBE_BYTES - prefix.len())]);
         }
         digest.update(&chunk);
         file.write_all(&chunk).await?;
     }
     file.sync_all().await?;
-    if prefix != PACK_START {
+    if !media_format.matches_prefix(&prefix) {
         return Err(BridgeError::Upstream(
-            "recording does not start at an MPEG-PS pack".into(),
+            "recording does not match its declared media format".into(),
         ));
     }
     Ok((written, hex::encode(digest.finalize())))

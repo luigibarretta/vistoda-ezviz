@@ -20,6 +20,8 @@ pub enum BridgeError {
     CameraNotFound,
     #[error("camera is offline")]
     CameraOffline,
+    #[error("requested media representation is unavailable")]
+    UnsupportedMedia,
     #[error("capacity limit reached: {0}")]
     Capacity(String),
     #[error("invalid recording request: {0}")]
@@ -52,6 +54,7 @@ impl BridgeError {
             Self::EnrollmentExpired => "enrollment_expired",
             Self::CameraNotFound => "camera_not_found",
             Self::CameraOffline => "camera_offline",
+            Self::UnsupportedMedia => "unsupported_media",
             Self::Capacity(_) => "capacity",
             Self::Recording(_) => "recording",
             Self::RecordingActive => "recording_active",
@@ -78,6 +81,7 @@ impl BridgeError {
             Self::EnrollmentExpired => "enrollment expired or was consumed",
             Self::CameraNotFound => "camera not found",
             Self::CameraOffline => "camera offline",
+            Self::UnsupportedMedia => "requested media representation is unavailable",
             Self::RecordingActive => "recording active",
             Self::UpstreamUnavailable => "upstream media unavailable",
             Self::Io(_) => "I/O failure",
@@ -106,6 +110,7 @@ impl BridgeError {
                 StatusCode::SERVICE_UNAVAILABLE,
                 json!({"error":"camera_offline"}),
             ),
+            Self::UnsupportedMedia => (StatusCode::CONFLICT, json!({"error":"unsupported_media"})),
             Self::Capacity(_) => (StatusCode::TOO_MANY_REQUESTS, json!({"error":"capacity"})),
             Self::Recording(detail) => (
                 StatusCode::BAD_REQUEST,

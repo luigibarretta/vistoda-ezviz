@@ -8,23 +8,23 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: luigibarretta/lib-vistoda-provider-kit
-          ref: 9f0a48b39a184f1755a3cd051a26b4054c8a7541
+          ref: 4f6c74125a673cb9836471122ae0007938b86619
           path: .ci/vistoda-provider-kit
       - name: Verify pinned Vistoda provider kit
         run: |
           pin="$(tr -d '[:space:]' < dependencies/vistoda-provider-kit.sha)"
-          test "${pin}" = "9f0a48b39a184f1755a3cd051a26b4054c8a7541"
+          test "${pin}" = "4f6c74125a673cb9836471122ae0007938b86619"
           test "$(git -C .ci/vistoda-provider-kit rev-parse HEAD)" = "${pin}"
           cmp .ci/vistoda-provider-kit/dist/vistoda-app-bootstrap.sh \
             packaging/home-assistant/vistoda-app-bootstrap.sh
-      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
         with:
           components: clippy,rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - run: cargo test --locked --test loc_budget

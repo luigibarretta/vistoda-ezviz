@@ -82,6 +82,8 @@ impl CameraTransport for Generational {
 async fn subscribers_share_one_bounded_hub() {
     let camera = CameraConfig {
         serial: "hidden".into(),
+        channel: 1,
+        substream: false,
         decrypt_video: false,
         media_key_file: None,
     };
@@ -110,6 +112,8 @@ async fn subscribers_share_one_bounded_hub() {
 async fn startup_preserves_camera_offline_failure() {
     let camera = CameraConfig {
         serial: "hidden".into(),
+        channel: 1,
+        substream: false,
         decrypt_video: false,
         media_key_file: None,
     };
@@ -135,6 +139,8 @@ async fn startup_preserves_camera_offline_failure() {
 async fn first_subscriber_after_idle_gets_a_fresh_upstream_generation() {
     let camera = CameraConfig {
         serial: "hidden".into(),
+        channel: 1,
+        substream: false,
         decrypt_video: false,
         media_key_file: None,
     };

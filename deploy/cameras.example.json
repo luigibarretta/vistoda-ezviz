@@ -1,6 +1,8 @@
 {
   "front-door": {
     "serial": "REPLACE_WITH_SERIAL",
+    "channel": 1,
+    "substream": false,
     "decrypt_video": false
   }
 }
