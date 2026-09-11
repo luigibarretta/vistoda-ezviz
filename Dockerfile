@@ -17,7 +17,7 @@ COPY packaging/collect-licenses.sh /usr/local/bin/collect-licenses
 RUN sh /usr/local/bin/collect-licenses /licenses
 
 FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
-ARG VERSION=0.6.1
+ARG VERSION=0.7.0
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="Vistoda EZVIZ" \
       org.opencontainers.image.version=$VERSION \

@@ -76,6 +76,27 @@ Compose. The example documents all required mounts and environment. Enrollment
 reads password and MFA without echo; see [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
 for canaries, monitoring, backup and rollback.
 
+### Home Assistant app cameras
+
+The Home Assistant app accepts a bounded `cameras` list with 1–64 entries.
+Each entry uses a unique alias matching `[A-Za-z0-9_-]{1,64}`, an EZVIZ serial
+matching `[A-Za-z0-9]+`, an optional integer `channel` from 1 to 256 (default
+`1`), and an optional boolean `substream` (default `false`):
+
+```yaml
+cameras:
+  - alias: front-door
+    serial: DEVICE123
+    channel: 1
+    substream: false
+```
+
+The app atomically writes the existing alias-keyed `cameras.json` contract and
+publishes one `media_bridge` discovery device per alias. Existing installations
+with `alias`, `camera_serial`, `camera_channel`, and `substream` continue to
+work when `cameras` is missing or empty. Credentials and API tokens are not
+part of this option contract.
+
 ## HTTP contract
 
 | Endpoint | Purpose | Authentication |

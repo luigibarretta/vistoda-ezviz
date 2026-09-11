@@ -412,7 +412,7 @@ dependencies = [
 
 [[package]]
 name = "ezviz-vtm-bridge"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "aes",
  "async-stream",

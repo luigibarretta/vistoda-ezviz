@@ -80,6 +80,12 @@ paths:
         - bearerAuth: []
       responses:
         "204": {description: Pending enrollment removed or already absent}
+  /v1/cameras/{camera}/identity:
+    get:
+      summary: Resolve the physical serial/channel bound to a camera alias
+      security: [{bearerAuth: []}, {basicAuth: []}]
+      parameters: [{$ref: "#/components/parameters/Camera"}]
+      responses: {"200": {description: Authenticated physical-camera binding, content: {application/json: {schema: {type: object, additionalProperties: false, required: [camera, source_id], properties: {camera: {type: string}, source_id: {type: string}}}}}}, "404": {$ref: "#/components/responses/NotFound"}}
   /v1/cameras/{camera}/snapshot.jpg:
     get:
       security:
@@ -98,10 +104,8 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
   /v1/cameras/{camera}/live.mpegps:
     get:
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/Camera"
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: "#/components/parameters/Camera"}, {$ref: "#/components/parameters/ExpectedBinding"}]
       responses:
         "200":
           description: Chunked canonical MPEG program stream for clear-media cameras
@@ -109,19 +113,18 @@ paths:
             video/mpeg:
               schema: {type: string, contentEncoding: binary}
         "409": {description: Camera exposes encrypted RTP and only the live.ts representation is available}
+        "404": {$ref: "#/components/responses/NotFound"}
   /v1/cameras/{camera}/live.ts:
     get:
-      security:
-        - bearerAuth: []
-        - basicAuth: []
-      parameters:
-        - $ref: "#/components/parameters/Camera"
+      security: [{bearerAuth: []}, {basicAuth: []}]
+      parameters: [{$ref: "#/components/parameters/Camera"}, {$ref: "#/components/parameters/ExpectedBinding"}]
       responses:
         "200":
           description: Chunked shared copy-remuxed MPEG transport stream
           content:
             video/mp2t:
               schema: {type: string, contentEncoding: binary}
+        "404": {$ref: "#/components/responses/NotFound"}
   /v1/cameras/{camera}/recordings:
     post:
       security:
@@ -247,6 +250,7 @@ components:
       in: path
       required: true
       schema: {type: string, pattern: "^[A-Za-z0-9_-]+$"}
+    ExpectedBinding: {name: expected_binding, in: query, required: false, description: Opaque reconnect-safe camera binding., schema: {type: string, pattern: "^[0-9a-f]{64}$"}}
     RecordingId: {name: recording_id, in: path, required: true, schema: {type: string, format: uuid}}
     Page: {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
     PageSize: {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}

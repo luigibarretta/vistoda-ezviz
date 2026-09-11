@@ -104,6 +104,7 @@ pub fn router(runtime: Arc<Runtime>) -> Router {
     Router::new()
         .route("/healthz", get(health))
         .route("/metrics", get(metrics))
+        .route("/v1/cameras/{camera}/identity", get(camera_identity))
         .route("/v1/cameras/{camera}/snapshot.jpg", get(snapshot))
         .route("/v1/cameras/{camera}/live.mpegps", get(raw_stream))
         .route("/v1/cameras/{camera}/live.ts", get(ts_stream))
@@ -145,6 +146,21 @@ async fn metrics(State(runtime): State<Arc<Runtime>>) -> Response {
         "text/plain; charset=utf-8",
         runtime.metrics.render().await,
     )
+}
+
+async fn camera_identity(
+    State(runtime): State<Arc<Runtime>>,
+    Path(camera): Path<String>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let configured = runtime
+        .config
+        .cameras
+        .get(&camera)
+        .ok_or(BridgeError::CameraNotFound)?;
+    Ok(Json(json!({
+        "camera": camera,
+        "source_id": format!("{}:{}", configured.serial, configured.channel),
+    })))
 }
 
 async fn snapshot(

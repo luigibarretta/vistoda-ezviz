@@ -5,6 +5,7 @@ readonly data_dir=/data
 readonly options_file=/data/options.json
 readonly token_file=/data/api-token
 readonly cameras_file=/data/cameras.json
+readonly cameras_tmp_file=/data/cameras.json.new.$$
 . /usr/local/lib/vistoda-app-bootstrap
 
 umask 077
@@ -12,22 +13,17 @@ vistoda_require_supervisor_token
 mkdir -p "${data_dir}/recordings"
 vistoda_prepare_data_dir bridge:bridge "${data_dir}"
 
-alias_name="$(jq -er '.alias | strings | select(test("^[A-Za-z0-9_-]+$"))' "${options_file}")"
-camera_serial="$(jq -er '.camera_serial | strings | select(test("^[A-Za-z0-9]+$"))' "${options_file}")" || {
-    vistoda_fail 'Enter the camera serial from EZVIZ device information in app Configuration, save, then start again. Use the serial, not the verification code.'
+jq -S -e -f /usr/local/lib/vistoda-cameras.jq "${options_file}" >"${cameras_tmp_file}" || {
+    rm -f "${cameras_tmp_file}"
+    vistoda_fail 'Camera configuration is invalid: use 1-64 unique safe aliases, valid serials, channels 1-256, and boolean substream values.'
     exit 1
 }
-camera_channel="$(jq -er '.camera_channel // 1 | numbers | select(. >= 1 and . <= 256)' "${options_file}")"
-substream="$(jq -er '
-    (.substream // false) as $value |
-    if ($value | type) == "boolean" then ($value | tostring)
-    else error("substream must be a boolean") end
-' "${options_file}")"
+chown bridge:bridge "${cameras_tmp_file}"
+chmod 0600 "${cameras_tmp_file}"
+mv -f "${cameras_tmp_file}" "${cameras_file}"
+camera_alias="$(jq -er 'keys[0]' "${cameras_file}")"
+camera_alias_json="$(jq -c 'to_entries | map({alias: .key, source_id: "\(.value.serial):\(.value.channel)"})' "${cameras_file}")"
 vistoda_ensure_hex_token "${token_file}" bridge:bridge ''
-jq -n --arg alias "${alias_name}" --arg serial "${camera_serial}" \
-    --argjson channel "${camera_channel}" --argjson substream "${substream}" \
-    '{($alias): {serial: $serial, channel: $channel, substream: $substream,
-      decrypt_video: false}}' >"${cameras_file}"
 chown bridge:bridge "${cameras_file}"
 chown -R bridge:bridge "${data_dir}/recordings"
 chmod 0700 "${data_dir}/recordings"
@@ -48,10 +44,13 @@ jq -n \
     --arg service media_bridge \
     --arg provider ezviz \
     --arg url "${private_url}" \
-    --arg alias "${alias_name}" \
+    --arg alias "${camera_alias}" \
+    --argjson aliases "$(jq -c 'keys' "${cameras_file}")" \
+    --argjson devices "${camera_alias_json}" \
     --rawfile api_token "${token_file}" \
     '{service: $service, config: {provider: $provider, url: $url,
-      alias: $alias, api_token: ($api_token | gsub("\\s"; "")), managed_app: true}}' |
+      alias: $alias, aliases: $aliases, devices: $devices,
+      api_token: ($api_token | gsub("\\s"; "")), managed_app: true}}' |
     vistoda_publish_discovery
 
 vistoda_wait_child

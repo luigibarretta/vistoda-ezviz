@@ -8,7 +8,7 @@ COPY packaging/collect-licenses.sh /usr/local/bin/collect-licenses
 RUN sh /usr/local/bin/collect-licenses /licenses
 
 FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
-ARG BUILD_VERSION=0.6.1
+ARG BUILD_VERSION=0.7.0
 ARG BUILD_ARCH=unknown
 LABEL io.hass.version="${BUILD_VERSION}" \
       io.hass.type="app" \
@@ -26,6 +26,7 @@ COPY LICENSE NOTICE /usr/share/doc/vistoda/
 COPY --from=builder /source/target/release/ezviz-vtm-bridge /usr/local/bin/
 COPY packaging/home-assistant/run.sh /usr/local/bin/vistoda-app-run
 COPY packaging/home-assistant/vistoda-app-bootstrap.sh /usr/local/lib/vistoda-app-bootstrap
+COPY packaging/home-assistant/cameras.jq /usr/local/lib/vistoda-cameras.jq
 EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl --fail --silent --show-error http://127.0.0.1:8765/healthz || exit 1

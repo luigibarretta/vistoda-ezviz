@@ -108,9 +108,15 @@ fn validate_cameras(cameras: &BTreeMap<String, CameraConfig>) -> Result<(), Brid
                 "camera aliases must be alphanumeric with '-' or '_'".into(),
             ));
         }
-        if camera.serial.trim().is_empty() {
+        if camera.serial.is_empty()
+            || camera.serial.len() > 64
+            || !camera
+                .serial
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
             return Err(BridgeError::Configuration(format!(
-                "camera {alias} has no serial"
+                "camera {alias} has an invalid serial"
             )));
         }
         if !(1..=256).contains(&camera.channel) {

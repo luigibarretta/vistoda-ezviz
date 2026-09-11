@@ -3,11 +3,13 @@ use std::{convert::Infallible, sync::Arc, time::Duration};
 use async_stream::stream;
 use axum::{
     body::Body,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::Response,
 };
 use bytes::Bytes;
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use tokio::{
     sync::mpsc,
     time::{sleep, timeout},
@@ -17,10 +19,37 @@ use crate::error::BridgeError;
 
 use super::{Runtime, no_store, response};
 
+#[derive(Deserialize)]
+pub(super) struct StreamBinding {
+    expected_binding: Option<String>,
+}
+
+fn verify_binding(
+    runtime: &Runtime,
+    camera: &str,
+    expected: Option<&str>,
+) -> Result<(), BridgeError> {
+    let configured = runtime
+        .config
+        .cameras
+        .get(camera)
+        .ok_or(BridgeError::CameraNotFound)?;
+    if let Some(expected) = expected {
+        let source = format!("{}:{}", configured.serial, configured.channel);
+        let actual = format!("{:x}", Sha256::digest(source.as_bytes()));
+        if expected != actual {
+            return Err(BridgeError::CameraNotFound);
+        }
+    }
+    Ok(())
+}
+
 pub(super) async fn raw_stream(
     State(runtime): State<Arc<Runtime>>,
     Path(camera): Path<String>,
+    Query(binding): Query<StreamBinding>,
 ) -> Result<Response, BridgeError> {
+    verify_binding(&runtime, &camera, binding.expected_binding.as_deref())?;
     if runtime
         .config
         .cameras
@@ -80,7 +109,9 @@ pub(super) async fn raw_stream(
 pub(super) async fn ts_stream(
     State(runtime): State<Arc<Runtime>>,
     Path(camera): Path<String>,
+    Query(binding): Query<StreamBinding>,
 ) -> Result<Response, BridgeError> {
+    verify_binding(&runtime, &camera, binding.expected_binding.as_deref())?;
     let hub = Arc::clone(runtime.ts.get(&camera).ok_or(BridgeError::CameraNotFound)?);
     let mut subscription = hub.subscribe().await?;
     runtime
