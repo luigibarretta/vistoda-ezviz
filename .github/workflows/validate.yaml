@@ -20,7 +20,7 @@ jobs:
       - name: Fetch the exact provider kit from the public source of truth
         run: |
           git init .ci/vistoda-provider-kit
-          git -C .ci/vistoda-provider-kit remote add origin https://git.luigibarretta.com/luigibarretta/lib-vistoda-provider-kit.git
+          git -C .ci/vistoda-provider-kit remote add origin https://github.com/luigibarretta/lib-vistoda-provider-kit.git
           git -C .ci/vistoda-provider-kit fetch --depth=1 origin 4f6c74125a673cb9836471122ae0007938b86619
           git -C .ci/vistoda-provider-kit checkout --detach FETCH_HEAD
       - name: Verify exact bootstrap dependency and lifecycle
