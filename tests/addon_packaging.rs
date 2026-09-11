@@ -25,27 +25,25 @@ fn render_cameras(root: &Path, input: &str) -> std::process::Output {
         .unwrap_or_else(|error| panic!("wait for jq: {error}"))
 }
 
-#[test]
-fn home_assistant_app_is_private_discovered_and_multiarch() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+fn read(root: &Path, relative: &str) -> String {
+    fs::read_to_string(root.join(relative)).unwrap_or_else(|error| panic!("{relative}: {error}"))
+}
+
+fn assert_image_contract(root: &Path) {
     let dockerfile = fs::read_to_string(root.join("packaging/home-assistant/Dockerfile"))
         .unwrap_or_else(|error| panic!("{error}"));
-    let runner = fs::read_to_string(root.join("packaging/home-assistant/run.sh"))
-        .unwrap_or_else(|error| panic!("{error}"));
-    let bootstrap =
-        fs::read_to_string(root.join("packaging/home-assistant/vistoda-app-bootstrap.sh"))
-            .unwrap_or_else(|error| panic!("{error}"));
-    let workflow = fs::read_to_string(root.join(".github/workflows/publish-addon.yaml"))
-        .unwrap_or_else(|error| panic!("{error}"));
-    let api =
-        fs::read_to_string(root.join("openapi.yaml")).unwrap_or_else(|error| panic!("{error}"));
     assert!(dockerfile.contains("io.hass.type=\"app\""));
     assert!(dockerfile.contains("HEALTHCHECK"));
     assert!(dockerfile.contains("vistoda-app-bootstrap.sh"));
+    assert!(!dockerfile.contains("8765:8765"));
+}
+
+fn assert_runtime_contract(root: &Path) {
+    let runner = read(root, "packaging/home-assistant/run.sh");
+    let bootstrap = read(root, "packaging/home-assistant/vistoda-app-bootstrap.sh");
+    let camera_filter = read(root, "packaging/home-assistant/cameras.jq");
     assert!(runner.contains("vistoda_supervisor_app_info"));
     assert!(runner.contains("vistoda_publish_discovery"));
-    let camera_filter = fs::read_to_string(root.join("packaging/home-assistant/cameras.jq"))
-        .unwrap_or_else(|error| panic!("{error}"));
     assert!(camera_filter.contains("cameras must contain 1 to 64 items"));
     assert!(camera_filter.contains("^[A-Za-z0-9_-]{1,64}$"));
     assert!(camera_filter.contains("aliases are not unique"));
@@ -61,7 +59,11 @@ fn home_assistant_app_is_private_discovered_and_multiarch() {
     assert!(runner.contains("vistoda_secure_file bridge:bridge \"${data_dir}/token.json\""));
     assert!(camera_filter.contains("substream values are invalid"));
     assert!(!camera_filter.contains(".substream // false | booleans"));
-    assert!(!runner.contains("8765:8765"));
+}
+
+fn assert_release_contract(root: &Path) {
+    let workflow = read(root, ".github/workflows/publish-addon.yaml");
+    let api = read(root, "openapi.yaml");
     assert!(workflow.contains("[\"amd64\", \"aarch64\"]"));
     assert!(workflow.contains("home-assistant/builder/actions/build-image"));
     assert!(workflow.contains("publish-multi-arch-manifest"));
@@ -69,6 +71,14 @@ fn home_assistant_app_is_private_discovered_and_multiarch() {
     assert!(api.contains("/v1/enrollments/{enrollment_id}:"));
     assert!(api.contains("/v1/cameras/{camera}/identity:"));
     assert!(api.contains("#/components/parameters/ExpectedBinding"));
+}
+
+#[test]
+fn home_assistant_app_is_private_discovered_and_multiarch() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    assert_image_contract(&root);
+    assert_runtime_contract(&root);
+    assert_release_contract(&root);
 }
 
 #[test]
