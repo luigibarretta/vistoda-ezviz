@@ -49,7 +49,7 @@ async fn archive_inventory_is_authenticated_and_starts_empty() {
     let invalid = app
         .oneshot(TestSystem::request(
             "GET",
-            "/v1/recordings?page=1&page_size=51",
+            "/v1/recordings?page=1&page_size=101",
             Body::empty(),
         ))
         .await
