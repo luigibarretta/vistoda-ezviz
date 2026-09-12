@@ -27,9 +27,13 @@ size and SHA-256 before commit.
 
 ## Consequences
 
-This brings the reusable pagination/channel/decryption ideas observed in the
+This adapts pagination/channel/decryption behavior and decryptor structure from
 MIT-licensed `Bahrombekk/cloud-cam-viewer` into Vistoda without adopting its
 per-camera permanent processes, one-hour token cache, Python monkey patches or
 secret-bearing arguments. It is not a universal EZVIZ decryptor: encrypted
 program/transport-stream profiles remain unsupported until captured fixtures
 justify a separately tested parser.
+
+The 2026-09-12 provenance audit corrected the earlier independence claim.
+`third_party/cloud-cam-viewer/README.md` maps the adaptation and the adjacent
+LICENSE preserves the complete upstream MIT terms in source and images.

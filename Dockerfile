@@ -16,8 +16,8 @@ RUN cargo build --release --locked --bins \
 COPY packaging/collect-licenses.sh /usr/local/bin/collect-licenses
 RUN sh /usr/local/bin/collect-licenses /licenses
 
-FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
-ARG VERSION=0.7.0
+FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS runtime
+ARG VERSION=0.7.1
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="Vistoda EZVIZ" \
       org.opencontainers.image.version=$VERSION \
@@ -31,6 +31,10 @@ RUN apt-get update \
     && useradd --uid 10001 --gid bridge --no-create-home --home-dir /nonexistent bridge
 COPY --from=builder /licenses /usr/share/doc/vistoda/dependencies
 COPY LICENSE NOTICE /usr/share/doc/vistoda/
+COPY third_party /usr/share/doc/vistoda/third_party
+COPY DISTRIBUTION.md /usr/share/doc/vistoda/
+COPY packaging/collect-runtime-inventory.sh /usr/local/lib/vistoda-collect-runtime-inventory
+RUN sh /usr/local/lib/vistoda-collect-runtime-inventory /usr/share/doc/vistoda/runtime
 COPY --from=builder --chmod=0555 /build/target/release/ezviz-vtm-bridge /usr/local/bin/
 COPY --from=builder --chmod=0555 /build/target/release/scenetrove-pull /usr/local/bin/
 USER 10001:10001
@@ -41,3 +45,11 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD ["ezviz-vtm-bridge", "healthcheck"]
 ENTRYPOINT ["ezviz-vtm-bridge"]
 CMD ["serve"]
+
+FROM runtime AS corresponding_sources
+USER root
+COPY packaging/collect-debian-sources.sh /usr/local/lib/vistoda-collect-debian-sources
+RUN sh /usr/local/lib/vistoda-collect-debian-sources
+
+FROM runtime
+COPY --from=corresponding_sources /corresponding-source.tar /corresponding-source.tar.sha256 /usr/share/doc/vistoda/
