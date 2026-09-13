@@ -1,71 +1,58 @@
-# Delivery plan
+# Vistoda EZVIZ release state
 
-## Outcome
+This document records the release gates for Vistoda EZVIZ. The supported user
+surface is defined by the repository README, OpenAPI contract and Vistoda
+compatibility matrix.
 
-Deliver a production bridge that exposes one EZVIZ CP4 cloud media session to
-Home Assistant and SceneTrove without forking either consumer, leaking vendor
-credentials, continuously draining the camera battery, or transcoding video.
+## Current 0.7.2 scope
 
-## Phases and acceptance gates
+- private account enrollment and rotating session storage;
+- complete bounded camera inventory pagination;
+- exact serial, channel and optional substream binding for multiple cameras;
+- fresh or cached JPEG snapshots;
+- one shared, cancellable upstream per camera;
+- compatible clear MPEG-PS and decrypted RTP to MPEG-TS media paths;
+- finite local recordings with immutable size and SHA-256 manifests;
+- paginated recording inventory and browser-compatible playback;
+- Home Assistant and SceneTrove consumer contracts;
+- health metrics, rootless packaging and signed multi-architecture images.
 
-1. **Contracts and safety** — accepted ADRs, threat model, OpenAPI contract,
-   secret-redaction tests and bounded defaults.
-2. **Transport** — native Rust token refresh, VTM/VTDU, fresh snapshot and a
-   cancellable PS or decrypted RTP producer. Offline tests use golden wire fixtures.
-3. **Fan-out** — exactly one upstream per camera, bounded subscriber queues,
-   slow-consumer eviction, idle shutdown and restart backoff.
-4. **Consumer media** — manifest-typed PS/TS for SceneTrove; shared FFmpeg
-   copy-remux to MPEG-TS for Home Assistant; no video re-encode.
-5. **Finite capture** — idempotent, duration-bounded recordings, atomic publish,
-   SHA-256 manifest, authenticated download and durable idempotent ACK.
-6. **Packaging** — rootless/read-only container, persistent token/recording
-   state only, healthcheck, metrics and immutable CI artifacts.
-7. **Canary** — snapshot decode, bounded live stream, multi-consumer fan-out,
-   disconnect cleanup, restart recovery and no secret-bearing logs.
-8. **Integration** — Home Assistant Generic Camera first; SceneTrove connector
-   imports manifest-typed media through its existing remux path. Automatic AI remains off
-   until its existing accuracy gates pass.
+Owned-camera evidence covered snapshot decoding, H.264/AAC media, concurrent
+consumers, finite capture, Home Assistant playback, SceneTrove import and idle
+teardown. Deterministic tests use synthetic fixtures and do not contact EZVIZ.
 
-## Global quality gates
+## Release gates
 
-- Rust 1.88+, rustfmt and strict Clippy `all`, `pedantic` and `nursery`;
-- property, negative, crash-recovery and HTTP contract tests;
-- deterministic tests require no network or secrets;
-- every loop, queue, recording and request has an explicit bound;
-- no API response or log contains vendor tokens, camera serials or signed URLs;
-- graceful SIGTERM and zero abandoned FFmpeg/producer processes;
-- configuration is fail-closed and refuses default API credentials;
-- rollback is removal of the consumer URL and bridge container only; official
-  Home Assistant EZVIZ entities and SceneTrove archives remain untouched.
+Every release must pass:
 
-## Verified delivery state
+1. Rust formatting, strict Clippy, locked tests and dependency audit.
+2. OpenAPI, malformed-input, recovery and consumer contract tests.
+3. Exact camera binding checks before snapshot, live, recording and archive use.
+4. Bounded queues, requests, live duration, recording duration and spool size.
+5. Clean teardown with no abandoned producer or FFmpeg process.
+6. Logs and responses free of credentials, signed URLs and camera serials.
+7. Rootless read-only images for `amd64` and `aarch64`, signed from the tag.
+8. Matching Vistoda app metadata and compatibility documentation.
 
-- Phases 1–6 passed for the native Rust implementation: rustfmt, strict Clippy,
-  deterministic unit/contract/property/recovery tests, RustSec audit, frozen
-  Rust 1.88 container build and the 300-LOC guard.
-- The recording contract is OpenAPI 1.1: SceneTrove commits and verifies local
-  media before idempotent `DELETE`; a durable receipt closes the crash window
-  and bounded tombstones preserve retry behavior across bridge restarts.
-- Phases 7–8 passed against the owned CP4 on the native Rust release: fresh
-  JPEG, H.264/AAC MPEG-PS and MPEG-TS, single-upstream fan-out, teardown, Home
-  Assistant HLS and a finite SceneTrove import all completed successfully.
-- Production runs commit `37d757b055cfe2a7323eee7b4e9c7ec1722b454b`
-  at manifest digest `sha256:931a8c4564a9d9c8f2284e936c2b0d2cd35aa6e34820d75cd54cf2e4d2b71688`.
-  The deployed container is healthy, rootless, read-only and has zero restarts.
-- The final SceneTrove canary proved the ordering invariant: verify and fsync
-  the local file, persist the recovery receipt, then issue idempotent `DELETE`.
-  The bridge spool and adapter receipt set were both empty afterward; the
-  durable ACK tombstone survived the transaction.
-- The dedicated EZVIZ enrollment session is encrypted in the infrastructure
-  vault; its plaintext enrollment artifact was securely removed after import.
-- Home Assistant uses the supported Generic Camera flow as
-  `camera.ezviz_cp4_vtm`. Both the proxied JPEG and a real HLS media segment
-  were verified, followed by zero upstream and remux activity after teardown.
-- SceneTrove imported and validated one bounded 15-second H.264/AAC capture.
-  Its immutable pull unit remains disabled and is invoked explicitly, so no
-  background schedule drains the doorbell battery.
-- The optimized cold-start canary measured 6.72 seconds to first upstream
-  MPEG-PS bytes and 10.81 seconds to first remuxed MPEG-TS bytes; both pipelines
-  returned to zero active consumers after teardown.
-- The production listener is private and source-filtered to its declared
-  Home Assistant, SceneTrove and management consumers. No public route exists.
+Real-device canaries are opt-in. Prefer a powered camera, stop on provider
+throttling or account warnings and verify that upstream and remux activity both
+return to zero.
+
+## Known boundary
+
+The release does not provide two-way voice talk or direct access to files on a
+camera microSD card. Those features require a usable, authorized EZVIZ Open
+Platform path or new owner-authorized protocol evidence. The Android SDK is not
+a Linux runtime dependency and is not shipped in the provider image.
+
+Encrypted-stream support covers the implemented RTP/H.264/HEVC profiles, not
+every EZVIZ model or firmware. Unsupported encryption fails without emitting
+ciphertext as playable media. Keep the official EZVIZ app for account recovery,
+talk, microSD administration and unsupported models.
+
+## Future changes
+
+New device profiles or uplink media remain capability-gated until their wire
+format, authentication, cancellation, recovery and resource limits are proven.
+Research notes record provenance; production code remains Rust-only and does
+not vendor proprietary SDK binaries or third-party Python implementations.

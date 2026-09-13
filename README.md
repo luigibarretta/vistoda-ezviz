@@ -9,6 +9,11 @@ The Rust package and executable remain `ezviz-vtm-bridge` as a compatibility
 contract for existing images, health checks and automation. The product and
 canonical repository are Vistoda EZVIZ and `vistoda-ezviz`.
 
+The released scope is snapshots, compatible live streams and finite local
+recordings. It does not provide voice talk or direct camera microSD access, and
+encrypted-stream compatibility varies by model. Home Assistant OS users should
+start with the shared [setup guide](https://github.com/luigibarretta/vistoda-addons/blob/main/GETTING_STARTED.md).
+
 ## Why it exists
 
 Some EZVIZ devices work in the vendor app while offering no accessible LAN
@@ -53,28 +58,47 @@ Consumers depend only on
 [`openapi.yaml`](openapi.yaml). Architectural choices and consequences are
 indexed in [`docs/adr/README.md`](docs/adr/README.md).
 
-## Quick start
+## Home Assistant OS
 
-Requirements: Docker with Compose, or Rust 1.88 for local development, plus a
-random API token of at least 32 characters and the camera serial. Copy the
-examples, enroll from a trusted terminal and keep real secrets outside Git:
+Install the main **Vistoda** HACS integration and the **Vistoda EZVIZ** app. Add
+the camera serial/channel in the app options before starting it, then complete
+the discovered account flow. The [English setup guide](https://github.com/luigibarretta/vistoda-addons/blob/main/GETTING_STARTED.md)
+and [guida italiana](https://github.com/luigibarretta/vistoda-addons/blob/main/GETTING_STARTED.it.md)
+cover single and multiple cameras, expected results and first checks.
+
+## Standalone development quick start
+
+Requirements: Docker with Compose, OpenSSL and the camera serial. The example
+runs as your local UID/GID so its bind-mounted state remains private and
+writable. Enroll from a trusted terminal and keep real secrets outside Git:
 
 ```bash
 install -d -m 0700 config data secrets
 cp deploy/cameras.example.json config/cameras.json
+```
+
+Edit `config/cameras.json` and replace `REPLACE_WITH_SERIAL` with the real
+camera serial. Then replace the example account value below before continuing:
+
+```bash
 openssl rand -hex 32 > secrets/api_token
 chmod 600 secrets/api_token
-cargo build --release --locked
-./target/release/ezviz-vtm-bridge enroll \
-  --account 'owner@example.com' --token-file data/token.json
+export VISTODA_UID="$(id -u)"
+export VISTODA_GID="$(id -g)"
+export VISTODA_EZVIZ_ACCOUNT='replace-with-your-account-email'
+docker compose -f deploy/compose.example.yaml build
+docker compose -f deploy/compose.example.yaml run --rm ezviz-vtm-bridge \
+  enroll --account "$VISTODA_EZVIZ_ACCOUNT" --token-file /data/token.json
 docker compose -f deploy/compose.example.yaml config --quiet
 docker compose -f deploy/compose.example.yaml up -d
 ```
 
-Replace the immutable image placeholder and example bind address before running
-Compose. The example documents all required mounts and environment. Enrollment
-reads password and MFA without echo; see [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
-for canaries, monitoring, backup and rollback.
+The example builds the current checkout and binds only to loopback. Enrollment
+reads password and MFA without echo. Keep `VISTODA_UID` and `VISTODA_GID` set for
+later Compose commands. Configure a reviewed private-network bind only when
+another approved host must reach the bridge. See
+[`docs/OPERATIONS.md`](docs/OPERATIONS.md) for canaries, monitoring, backup and
+rollback.
 
 ### Home Assistant app cameras
 
@@ -131,6 +155,9 @@ runtime. The published image digest is the deployment identity.
 
 ## Development and quality gates
 
+Read the family [contribution guide](https://github.com/luigibarretta/vistoda-home-assistant/blob/main/CONTRIBUTING.md)
+first to understand repository ownership and cross-repository release order.
+
 Rust 1.88+ and Docker are required:
 
 ```bash
@@ -184,7 +211,17 @@ cache or Python monkey patches.
 
 ## Installation and recovery
 
-See the [English maintenance guide](https://github.com/luigibarretta/vistoda-addons/blob/main/OPERATIONS.md)
-and [Italian guide](https://github.com/luigibarretta/vistoda-addons/blob/main/OPERATIONS.it.md)
-for prerequisites, discovery, reconnection, updates, rollback, restore and uninstall.
+Start with the [English setup guide](https://github.com/luigibarretta/vistoda-addons/blob/main/GETTING_STARTED.md)
+or [guida italiana](https://github.com/luigibarretta/vistoda-addons/blob/main/GETTING_STARTED.it.md).
+The [operations guide](https://github.com/luigibarretta/vistoda-addons/blob/main/OPERATIONS.md)
+covers reconnection, updates, rollback, restore and uninstall. The
+[compatibility matrix](https://github.com/luigibarretta/vistoda-addons/blob/main/COMPATIBILITY.md)
+defines the tested release set and unsupported features.
 Images retain licenses/notices under `/usr/share/doc/vistoda`.
+
+## Author, support and independence
+
+Vistoda EZVIZ is maintained by [Luigi Barretta](https://github.com/luigibarretta).
+[Support the project on Ko-fi](https://ko-fi.com/luigibarretta). Vistoda is an
+independent project; read the shared [disclaimer](https://github.com/luigibarretta/vistoda-home-assistant/blob/main/DISCLAIMER.md)
+and [accessibility statement](https://github.com/luigibarretta/vistoda-home-assistant/blob/main/ACCESSIBILITY.md).

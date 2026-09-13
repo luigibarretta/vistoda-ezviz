@@ -1,5 +1,9 @@
 # Operations runbook
 
+This runbook covers the standalone provider and advanced recovery. Home
+Assistant OS users should begin with the shared
+[installation guide](https://github.com/luigibarretta/vistoda-addons/blob/main/GETTING_STARTED.md).
+
 ## Enrollment
 
 Run enrollment from a trusted interactive terminal. Password and MFA are read

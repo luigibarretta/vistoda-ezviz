@@ -1,9 +1,11 @@
 services:
   ezviz-vtm-bridge:
-    image: git.luigibarretta.com/luigibarretta/vistoda-ezviz:COMMIT@sha256:DIGEST
+    build:
+      context: ..
+    image: vistoda-ezviz:local
     restart: unless-stopped
     read_only: true
-    user: "10001:10001"
+    user: "${VISTODA_UID:-10001}:${VISTODA_GID:-10001}"
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -21,10 +23,10 @@ services:
     secrets:
       - api_token
     volumes:
-      - ./config:/config:ro
-      - ./data:/data
+      - ../config:/config:ro
+      - ../data:/data
     ports:
-      - "192.168.90.20:8765:8765"
+      - "127.0.0.1:8765:8765"
     deploy:
       resources:
         limits:
@@ -33,4 +35,4 @@ services:
 
 secrets:
   api_token:
-    file: ./secrets/api_token
+    file: ../secrets/api_token
