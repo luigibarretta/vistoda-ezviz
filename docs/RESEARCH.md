@@ -53,3 +53,31 @@ Primary sources:
 
 - EZVIZ SDK portal: <https://iusopen.ezviz.com/developer>
 - Official Android sample: <https://github.com/Ezviz-Open/EzvizSDK-Android>
+
+## Consumer app settings surface (7.6.1.0824)
+
+Reviewed 2026-09-14 from the owner-provided CP4 settings screenshots, the
+published package metadata for `com.ezviz` 7.6.1.0824, and the existing
+immutable pyEzvizApi oracle at commit
+`c713642fd99c3467efe1285dfc5d085714a00b50`. APKMirror reports the bundle as
+vendor-signed (`CN=hikvision`, certificate SHA-256
+`45e984f72060dc783490c3905c7efae87397e79fcb033c4e0c54c7acc061e2c5`) but also
+states that the developer requested removal of the downloadable artifact. No
+EZVIZ APK was present on the development host and no owner handset was
+available through ADB, so this pass does not claim a fresh decompilation.
+
+The CP4 UI groups Battery, Intelligent Detection, Message Notification, Audio,
+Image, Light and Record List controls, followed by Privacy, Network, Device
+Information, sharing and EZVIZ Cloud. The APK-derived compatibility oracle
+corroborates typed command families for camera/image parameters, compression,
+audio input/output volume, Wi-Fi status/configuration and EZVIZ access, plus
+consumer API calls for switch features, alarm light and defence schedules.
+Those command IDs prove discovery targets, not CP4-safe write semantics.
+
+Vistoda Home Assistant 0.32.0 therefore exposes the current battery and groups
+only the exactly bound official EZVIZ entities under those headings. Writable
+rows delegate to Home Assistant's native entity dialog. Missing settings are
+shown as unavailable instead of sending guessed private commands. A future
+provider-native settings endpoint requires a read/current-value call, typed
+validation, same-value canary and read-after-write rollback for each CP4
+capability before its control can appear.
