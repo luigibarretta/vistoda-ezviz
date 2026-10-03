@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use axum::{
     body::Body,
     http::{Request, header},
+    response::Response,
 };
 use ezviz_vtm_bridge::{
     api::Runtime,
@@ -14,6 +15,8 @@ use ezviz_vtm_bridge::{
     error::BridgeError,
     transport::{CameraTransport, ChunkConsumer},
 };
+use http_body_util::BodyExt;
+use serde_json::Value;
 use tempfile::TempDir;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
@@ -44,7 +47,21 @@ impl CameraTransport for FakeTransport {
     }
 }
 
+/// Collect a response body and decode it as JSON.
+#[allow(dead_code)]
+pub async fn json(response: Response) -> Value {
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .unwrap_or_else(|error| panic!("{error}"))
+        .to_bytes();
+    serde_json::from_slice(&bytes).unwrap_or_else(|error| panic!("{error}"))
+}
+
 pub struct TestSystem {
+    // Owns the temporary data root for the test's lifetime; not every test crate reads it.
+    #[allow(dead_code)]
     pub directory: TempDir,
     pub runtime: Arc<Runtime>,
 }

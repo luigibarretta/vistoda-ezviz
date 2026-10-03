@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const MAX_LINES: usize = 300;
+const MAX_LINES: usize = 250;
 const EXCLUDED_DIRECTORIES: &[&str] = &[
     ".git",
     ".mypy_cache",

@@ -1,6 +1,7 @@
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},

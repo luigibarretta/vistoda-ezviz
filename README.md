@@ -171,7 +171,7 @@ docker build --tag ezviz-vtm-bridge:test .
 
 Tests are deterministic and require neither network nor EZVIZ credentials.
 Live canaries are separate and opt-in. CI enforces formatting, strict Clippy,
-tests, RustSec audit, image build and a maximum of 300 physical lines for every
+tests, RustSec audit, image build and a maximum of 250 physical lines for every
 maintained source, configuration and documentation file. Split a responsibility
 instead of adding a LOC exception. A repository test also rejects any future
 Python source so the Rust-only boundary cannot silently regress.
