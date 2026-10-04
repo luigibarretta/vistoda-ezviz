@@ -118,11 +118,17 @@ async fn serve_runtime(address: &str, config: BridgeConfig) -> Result<(), Bridge
         )
         .await?,
     );
-    let runtime = Runtime::build(config, transport)?;
+    let alarm_interval = std::time::Duration::from_secs(config.alarm_poll_seconds);
+    let runtime = Runtime::build(config, Arc::clone(&transport) as _)?;
+    runtime.alarms.spawn(transport, alarm_interval);
     let listener = tokio::net::TcpListener::bind(&address).await?;
     tracing::info!(bind = %address, version = crate::VERSION, "bridge started");
+    let alarms = Arc::clone(&runtime.alarms);
     axum::serve(listener, router(Arc::clone(&runtime)))
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            alarms.shutdown();
+        })
         .await?;
     runtime.close().await;
     Ok(())

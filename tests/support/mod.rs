@@ -114,6 +114,7 @@ impl TestSystem {
             recording_quota_bytes: 4 * 1024 * 1024,
             snapshot_cache_seconds: 3,
             snapshot_stale_seconds: 30,
+            alarm_poll_seconds: 0,
         };
         let runtime = Runtime::build(config, Arc::new(FakeTransport))
             .unwrap_or_else(|error| panic!("{error}"));

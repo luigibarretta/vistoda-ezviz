@@ -81,3 +81,15 @@ shown as unavailable instead of sending guessed private commands. A future
 provider-native settings endpoint requires a read/current-value call, typed
 validation, same-value canary and read-after-write rollback for each CP4
 capability before its control can appear.
+
+## Unified alarm messages (7.6.1.0824)
+
+Reviewed 2026-10-04 by static decompilation of the vendor-signed `com.ezviz`
+7.6.1.0824 package (certificate prefix `45:E9:84:F7`). `MessageApi` declares
+`GET /v3/unifiedmsg/summarybydevice/v2?stype=` (`summaries[]` with
+`deviceSerial`, `total`, `unread`, `topMessage`) and `GET
+/v3/unifiedmsg/list/v2?serials=&stype=&limit=20&date=yyyyMMdd&endTime=`
+(`hasNext`, `message[]`). `DecryptFileOpener` documents the checksum-key
+picture layouts used by ADR-0018. The `endTime` value (last item's `time`;
+pyEzvizApi suggests a message ID) and `picCrypt=2` remain unconfirmed by an
+owned sample; Vistoda stops on a page without progress and fails closed.

@@ -1,3 +1,4 @@
+mod alarms;
 mod client;
 mod client_stream;
 mod enroll;
@@ -9,6 +10,7 @@ mod video_pipeline;
 
 pub use client::EzvizTransport;
 pub use enroll::{EnrollmentState, PendingEnrollment, begin, enroll};
+pub use image::{decrypt_image, jpeg_slice};
 pub use token::EzvizToken;
 
 use std::{sync::Arc, time::Duration};

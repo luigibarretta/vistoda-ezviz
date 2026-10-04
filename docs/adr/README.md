@@ -17,3 +17,4 @@
 - [ADR-0015 — Home Assistant app packaging](0015-home-assistant-app-packaging.md)
 - [ADR-0016 — Vistoda archive, microSD and talk boundaries](0016-vistoda-archive-boundaries.md)
 - [ADR-0017 — Bounded encrypted RTP compatibility](0017-encrypted-rtp.md)
+- [ADR-0018 — Read-only alarm event feed](0018-alarm-event-feed.md)

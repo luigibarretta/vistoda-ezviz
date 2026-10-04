@@ -64,6 +64,16 @@ retains one keyframe-aligned warm segment bounded to 8 MiB. A canary must attach
 a second client after the first has already been streaming long enough to pass
 the initial GOP; both clients must decode video and audio.
 
+## Alarm feed
+
+The provider polls EZVIZ alarm summaries every `EZVIZ_BRIDGE_ALARM_POLL_SECONDS`
+(default 15; 10–300; `0` disables) and never marks messages read. Watch
+`alarm_polls_total`, `alarm_poll_errors_total`, `alarms_received_total`,
+`alarm_pictures_stored_total`, `alarm_pictures_failed_total`,
+`alarm_pictures_unsupported_total` and `alarm_backlog_truncated_total`. History
+and pictures live under `/data/alarms/<alias>/`; deleting that directory while
+stopped resets them. Errors back off to five minutes and log no URLs or serials.
+
 ## SceneTrove
 
 SceneTrove uses the bounded live endpoint for interactive viewing and the

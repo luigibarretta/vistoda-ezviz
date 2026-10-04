@@ -19,7 +19,7 @@ use crate::{
 };
 
 pub struct EzvizTransport {
-    client: Client,
+    pub(super) client: Client,
     pub(super) token: RwLock<EzvizToken>,
     token_path: PathBuf,
     timeout_seconds: u64,
@@ -53,7 +53,7 @@ impl EzvizTransport {
         Ok(transport)
     }
 
-    async fn refresh_session(&self) -> Result<(), BridgeError> {
+    pub(super) async fn refresh_session(&self) -> Result<(), BridgeError> {
         let current = self.token.read().await.clone();
         let feature = current
             .feature_code
@@ -147,7 +147,7 @@ impl EzvizTransport {
         self.client.request(method, url).headers(headers)
     }
 
-    async fn camera_key(&self, serial: &str) -> Result<String, BridgeError> {
+    pub(super) async fn camera_key(&self, serial: &str) -> Result<String, BridgeError> {
         let token = self.token.read().await.clone();
         let feature = token.feature_code.as_deref().unwrap_or_default();
         let url = format!("https://{}/api/device/query/encryptkey", token.api_url);

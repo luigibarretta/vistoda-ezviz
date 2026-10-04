@@ -15,11 +15,16 @@ struct MetricValues {
 
 impl Metrics {
     pub async fn increment(&self, name: &str, camera: &str) {
+        self.add(name, camera, 1).await;
+    }
+
+    pub async fn add(&self, name: &str, camera: &str, amount: u64) {
         let mut values = self.inner.lock().await;
-        *values
+        let counter = values
             .counters
             .entry((name.to_owned(), camera.to_owned()))
-            .or_default() += 1;
+            .or_default();
+        *counter = counter.saturating_add(amount);
     }
 
     pub async fn gauge(&self, name: &str, camera: &str, value: f64) {

@@ -40,6 +40,8 @@ pub struct BridgeConfig {
     pub recording_quota_bytes: u64,
     pub snapshot_cache_seconds: u64,
     pub snapshot_stale_seconds: u64,
+    /// Alarm summary poll interval; zero disables the alarm feed poller.
+    pub alarm_poll_seconds: u64,
 }
 
 impl BridgeConfig {
@@ -88,6 +90,7 @@ impl BridgeConfig {
             )?,
             snapshot_cache_seconds: integer("EZVIZ_BRIDGE_SNAPSHOT_CACHE", 3, 0, 300)?,
             snapshot_stale_seconds: integer("EZVIZ_BRIDGE_SNAPSHOT_STALE", 900, 30, 3600)?,
+            alarm_poll_seconds: alarm_interval()?,
         })
     }
 }
@@ -131,6 +134,16 @@ fn validate_cameras(cameras: &BTreeMap<String, CameraConfig>) -> Result<(), Brid
         }
     }
     Ok(())
+}
+
+fn alarm_interval() -> Result<u64, BridgeError> {
+    let seconds = integer("EZVIZ_BRIDGE_ALARM_POLL_SECONDS", 15, 0, 300)?;
+    if (1..10).contains(&seconds) {
+        return Err(BridgeError::Configuration(
+            "EZVIZ_BRIDGE_ALARM_POLL_SECONDS must be 0 or between 10 and 300".into(),
+        ));
+    }
+    Ok(seconds)
 }
 
 fn value(name: &str, default: &str) -> String {

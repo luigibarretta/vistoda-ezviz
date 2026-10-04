@@ -4,7 +4,7 @@ This document records the release gates for Vistoda EZVIZ. The supported user
 surface is defined by the repository README, OpenAPI contract and Vistoda
 compatibility matrix.
 
-## Current 0.7.2 scope
+## Current 0.8.0 scope
 
 - private account enrollment and rotating session storage;
 - complete bounded camera inventory pagination;
@@ -15,6 +15,8 @@ compatibility matrix.
 - finite local recordings with immutable size and SHA-256 manifests;
 - paginated recording inventory and browser-compatible playback;
 - Home Assistant and SceneTrove consumer contracts;
+- read-only alarm feed with cursor/long-poll API, bounded persisted history
+  and locally stored decrypted alarm pictures (ADR-0018);
 - health metrics, rootless packaging and signed multi-architecture images.
 
 Owned-camera evidence covered snapshot decoding, H.264/AAC media, concurrent

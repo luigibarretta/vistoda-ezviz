@@ -12,9 +12,9 @@ use axum::{
 use serde_json::json;
 
 use crate::{
-    VERSION, auth::ApiAuthenticator, config::BridgeConfig, error::BridgeError, hub::RawStreamHub,
-    metrics::Metrics, recordings::RecordingManager, remux::MpegTsHub, snapshot::SnapshotService,
-    storage::ensure_private_regular, transport::CameraTransport,
+    VERSION, alarms::AlarmFeed, auth::ApiAuthenticator, config::BridgeConfig, error::BridgeError,
+    hub::RawStreamHub, metrics::Metrics, recordings::RecordingManager, remux::MpegTsHub,
+    snapshot::SnapshotService, storage::ensure_private_regular, transport::CameraTransport,
 };
 
 #[path = "api_stream.rs"]
@@ -29,6 +29,7 @@ pub struct Runtime {
     pub ts: BTreeMap<String, Arc<MpegTsHub>>,
     pub snapshots: SnapshotService,
     pub recordings: Arc<RecordingManager>,
+    pub alarms: Arc<AlarmFeed>,
 }
 
 impl Runtime {
@@ -78,6 +79,11 @@ impl Runtime {
             config.max_recording_bytes,
             config.recording_quota_bytes,
         )?;
+        let alarms = AlarmFeed::load(
+            &crate::alarms::data_directory(&config.data_dir),
+            &config.cameras,
+            metrics.clone(),
+        );
         Ok(Arc::new(Self {
             config,
             auth,
@@ -86,10 +92,12 @@ impl Runtime {
             ts,
             snapshots,
             recordings,
+            alarms,
         }))
     }
 
     pub async fn close(&self) {
+        self.alarms.close().await;
         self.recordings.close().await;
         for hub in self.ts.values() {
             hub.close().await;
@@ -109,6 +117,7 @@ pub fn router(runtime: Arc<Runtime>) -> Router {
         .route("/v1/cameras/{camera}/live.mpegps", get(raw_stream))
         .route("/v1/cameras/{camera}/live.ts", get(ts_stream))
         .merge(crate::api_recordings::routes())
+        .merge(crate::api_alarms::routes())
         .layer(middleware::from_fn_with_state(
             Arc::clone(&runtime),
             authenticate,

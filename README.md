@@ -33,6 +33,7 @@ modify camera firmware.
   optional NVR channel/substream configuration;
 - copy-remuxed MPEG-TS (`video/mp2t`) for Home Assistant and media clients;
 - fresh JPEG snapshots with short request coalescing;
+- read-only alarm feed (cursor/long-poll) with bounded history and pictures;
 - finite media-typed MPEG-PS/MPEG-TS recordings with immutable manifests and
   SHA-256 digests;
 - server-paginated archive inventory, private spool metadata and on-demand
@@ -130,6 +131,8 @@ part of this option contract.
 | `GET /v1/cameras/{camera}/snapshot.jpg` | JPEG snapshot | bearer or Basic |
 | `GET /v1/cameras/{camera}/live.mpegps` | shared MPEG-PS; clear-media cameras only | bearer |
 | `GET /v1/cameras/{camera}/live.ts` | shared MPEG-TS | bearer or Basic |
+| `GET /v1/cameras/{camera}/alarms?after=&wait=` | alarm cursor/long-poll batch | bearer |
+| `GET /v1/cameras/{camera}/alarms/{id}/picture.jpg` | stored alarm JPEG | bearer |
 | `POST /v1/cameras/{camera}/recordings` | finite capture | bearer |
 | `GET /v1/recordings?page=&page_size=&camera=` | paginated inventory and private spool descriptor | bearer |
 | `GET /v1/recordings/{id}` | immutable recording manifest | bearer |
@@ -140,6 +143,11 @@ part of this option contract.
 Basic authentication is reserved for Home Assistant's Generic Camera client:
 the fixed username is `homeassistant` and the API token is the password. The
 authoritative schemas, bounds and responses are in the OpenAPI document.
+
+Alarms are polled read-only every 15 seconds (`EZVIZ_BRIDGE_ALARM_POLL_SECONDS`,
+`0` disables). Omit `after` for up to 50 recent alarms; pass the returned
+`next_sequence` as `after` with `wait` ≤ 25 to long-poll new ones. Reset the
+cursor when `generation` changes. See [ADR-0018](docs/adr/0018-alarm-event-feed.md).
 
 ## Production model
 
