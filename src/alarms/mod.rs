@@ -5,7 +5,7 @@ mod fetch;
 mod model;
 mod pictures;
 mod poller;
-mod store;
+pub(crate) mod store;
 #[cfg(test)]
 mod tests;
 

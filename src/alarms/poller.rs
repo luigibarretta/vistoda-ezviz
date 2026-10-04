@@ -1,7 +1,7 @@
 //! Summary-driven alarm poller with silent startup priming and backoff.
 
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, VecDeque},
     sync::Arc,
     time::Duration,
 };
@@ -103,20 +103,7 @@ async fn sync_serial(
     state: &mut SerialState,
     live: bool,
 ) -> Result<(), BridgeError> {
-    let mut known: BTreeSet<String> = state.seen.iter().cloned().collect();
-    let mut newest = None;
-    for alias in aliases {
-        if let Some(slot) = feed.cameras.get(alias) {
-            let history = slot.history.lock().await;
-            newest = newest.max(history.newest_occurred_at());
-            known.extend(
-                history
-                    .recent(super::MAX_EVENTS)
-                    .into_iter()
-                    .map(|e| e.record.id),
-            );
-        }
-    }
+    let (known, newest) = support::known_ids(feed, aliases, state).await;
     let pages = if live { LIVE_PAGES } else { PRIME_PAGES };
     let is_known = |id: &str| known.contains(id);
     let result = fetch_unknown(source, serial, state.offset, newest, &is_known, pages).await?;
@@ -140,21 +127,7 @@ async fn sync_serial(
         }
         let batch = with_pictures(feed, source, alias, &mine).await;
         let outcome = feed.publish(alias, batch, live).await?;
-        for (name, count) in [
-            ("alarm_pictures_stored_total", outcome.pictures_stored),
-            ("alarm_pictures_failed_total", outcome.pictures_failed),
-            (
-                "alarms_received_total",
-                if live { outcome.inserted } else { 0 },
-            ),
-        ] {
-            if count > 0 {
-                feed.metrics.add(name, alias, count as u64).await;
-            }
-        }
-        if live && outcome.inserted > 0 {
-            tracing::info!(camera = %alias, count = outcome.inserted, "alarm events received");
-        }
+        support::record_outcome(feed, alias, &outcome, live).await;
     }
     // Remember IDs only after every alias committed them, so a failed
     // publish is retried instead of being treated as already known.
@@ -234,3 +207,5 @@ async fn report(feed: &AlarmFeed, aliases: Option<&[String]>, error: &BridgeErro
             .await;
     }
 }
+
+mod support;
