@@ -72,39 +72,63 @@ pub async fn candidate_keys(
     status: Option<&DeviceStatus>,
 ) -> Vec<VideoKey> {
     let hash = status.and_then(|status| status.encrypt_pwd_hash.as_deref());
-    let mut keys = Vec::new();
-    if let Some(path) = camera.media_key_file.as_ref() {
-        match ensure_private_regular(path, 1).map(Zeroizing::new) {
-            Ok(code) if matches_hash(&code, hash) => keys.push(VideoKey {
-                source: KeySource::Option,
-                code,
-            }),
-            Ok(_) => tracing::warn!("configured verification code does not match the camera"),
-            Err(error) => tracing::warn!(
-                error_type = error.diagnostic_code(),
-                "configured verification code is unavailable"
-            ),
-        }
-    }
+    let mut keys: Vec<VideoKey> = option_key(camera, hash).into_iter().collect();
     if hash.is_some() && !keys.is_empty() {
         return keys;
     }
-    match source.cloud_verification_code(camera).await {
-        Ok(code) if matches_hash(&code, hash) => {
-            if !keys.iter().any(|key| key.code() == code.as_str()) {
-                keys.push(VideoKey {
-                    source: KeySource::Cloud,
-                    code,
-                });
-            }
-        }
-        Ok(_) => tracing::warn!("cloud verification code does not match the camera"),
-        Err(error) => tracing::warn!(
-            error_type = error.diagnostic_code(),
-            "cloud verification code is unavailable"
-        ),
+    if let Some(cloud) = cloud_key(source, camera, hash).await
+        && !keys.iter().any(|key| key.code() == cloud.code())
+    {
+        keys.push(cloud);
     }
     keys
+}
+
+/// The app option's code when it is readable and matches the camera.
+fn option_key(camera: &CameraConfig, hash: Option<&str>) -> Option<VideoKey> {
+    let path = camera.media_key_file.as_ref()?;
+    match ensure_private_regular(path, 1).map(Zeroizing::new) {
+        Ok(code) if matches_hash(&code, hash) => Some(VideoKey {
+            source: KeySource::Option,
+            code,
+        }),
+        Ok(_) => {
+            tracing::warn!("configured verification code does not match the camera");
+            None
+        }
+        Err(error) => {
+            tracing::warn!(
+                error_type = error.diagnostic_code(),
+                "configured verification code is unavailable"
+            );
+            None
+        }
+    }
+}
+
+/// The cloud copy of the verification code when it matches the camera.
+async fn cloud_key(
+    source: &dyn DeviceSource,
+    camera: &CameraConfig,
+    hash: Option<&str>,
+) -> Option<VideoKey> {
+    match source.cloud_verification_code(camera).await {
+        Ok(code) if matches_hash(&code, hash) => Some(VideoKey {
+            source: KeySource::Cloud,
+            code,
+        }),
+        Ok(_) => {
+            tracing::warn!("cloud verification code does not match the camera");
+            None
+        }
+        Err(error) => {
+            tracing::warn!(
+                error_type = error.diagnostic_code(),
+                "cloud verification code is unavailable"
+            );
+            None
+        }
+    }
 }
 
 /// First usable code, as reported by the encryption endpoint.
