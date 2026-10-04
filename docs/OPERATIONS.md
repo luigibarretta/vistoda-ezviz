@@ -4,6 +4,40 @@ This runbook covers the standalone provider and advanced recovery. Home
 Assistant OS users should begin with the shared
 [installation guide](https://github.com/luigibarretta/vistoda-addons/blob/main/GETTING_STARTED.md).
 
+## Standalone quick start
+
+Run these commands from the repository root. Requirements: Docker with
+Compose, OpenSSL and the camera serial. The example
+runs as your local UID/GID so its bind-mounted state remains private and
+writable. Enroll from a trusted terminal and keep real secrets outside Git:
+
+```bash
+install -d -m 0700 config data secrets
+cp deploy/cameras.example.json config/cameras.json
+```
+
+Edit `config/cameras.json` and replace `REPLACE_WITH_SERIAL` with the real
+camera serial. Then replace the example account value below before continuing:
+
+```bash
+openssl rand -hex 32 > secrets/api_token
+chmod 600 secrets/api_token
+export VISTODA_UID="$(id -u)"
+export VISTODA_GID="$(id -g)"
+export VISTODA_EZVIZ_ACCOUNT='replace-with-your-account-email'
+docker compose -f deploy/compose.example.yaml build
+docker compose -f deploy/compose.example.yaml run --rm ezviz-vtm-bridge \
+  enroll --account "$VISTODA_EZVIZ_ACCOUNT" --token-file /data/token.json
+docker compose -f deploy/compose.example.yaml config --quiet
+docker compose -f deploy/compose.example.yaml up -d
+```
+
+The example builds the current checkout and binds only to loopback. Enrollment
+reads password and MFA without echo. Keep `VISTODA_UID` and `VISTODA_GID` set for
+later Compose commands. Configure a reviewed private-network bind only when
+another approved host must reach the bridge. The sections below
+cover canaries, monitoring, backup and rollback.
+
 ## Enrollment
 
 Run enrollment from a trusted interactive terminal. Password and MFA are read
@@ -73,6 +107,16 @@ The provider polls EZVIZ alarm summaries every `EZVIZ_BRIDGE_ALARM_POLL_SECONDS`
 `alarm_pictures_unsupported_total` and `alarm_backlog_truncated_total`. History
 and pictures live under `/data/alarms/<alias>/`; deleting that directory while
 stopped resets them. Errors back off to five minutes and log no URLs or serials.
+
+## Encryption and microSD
+
+`GET /v1/cameras/{alias}/encryption` reports whether the cloud marks video as
+encrypted and whether the option code or the account's cloud copy is usable.
+`key_source: none` on an encrypted camera means live view will fail closed:
+enter the verification code in the app options or disable encryption in the
+official app. `GET …/storage` and `GET …/sd-records?date=YYYY-MM-DD` are
+read-only; storage is fetched from EZVIZ at most once per camera every 10
+minutes, so a freshly inserted card may take that long to appear.
 
 ## SceneTrove
 

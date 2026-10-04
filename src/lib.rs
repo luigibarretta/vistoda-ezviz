@@ -3,12 +3,14 @@
 pub mod alarms;
 pub mod api;
 mod api_alarms;
+mod api_device;
 mod api_recordings;
 pub mod auth;
 pub mod bootstrap;
 pub mod canary;
 pub mod cli;
 pub mod config;
+pub mod device;
 mod enrollment;
 pub mod error;
 pub mod hub;

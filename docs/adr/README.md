@@ -18,3 +18,5 @@
 - [ADR-0016 — Vistoda archive, microSD and talk boundaries](0016-vistoda-archive-boundaries.md)
 - [ADR-0017 — Bounded encrypted RTP compatibility](0017-encrypted-rtp.md)
 - [ADR-0018 — Read-only alarm event feed](0018-alarm-event-feed.md)
+- [ADR-0019 — Read-only microSD index and video key resolution](0019-device-status-and-video-key.md)
+- [ADR-0020 — microSD playback over VTM (proposed)](0020-sd-playback-over-vtm.md)

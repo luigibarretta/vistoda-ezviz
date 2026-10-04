@@ -12,9 +12,10 @@ use axum::{
 use serde_json::json;
 
 use crate::{
-    VERSION, alarms::AlarmFeed, auth::ApiAuthenticator, config::BridgeConfig, error::BridgeError,
-    hub::RawStreamHub, metrics::Metrics, recordings::RecordingManager, remux::MpegTsHub,
-    snapshot::SnapshotService, storage::ensure_private_regular, transport::CameraTransport,
+    VERSION, alarms::AlarmFeed, auth::ApiAuthenticator, config::BridgeConfig,
+    device::DeviceService, error::BridgeError, hub::RawStreamHub, metrics::Metrics,
+    recordings::RecordingManager, remux::MpegTsHub, snapshot::SnapshotService,
+    storage::ensure_private_regular, transport::CameraTransport,
 };
 
 #[path = "api_stream.rs"]
@@ -30,6 +31,7 @@ pub struct Runtime {
     pub snapshots: SnapshotService,
     pub recordings: Arc<RecordingManager>,
     pub alarms: Arc<AlarmFeed>,
+    pub devices: Arc<DeviceService>,
 }
 
 impl Runtime {
@@ -84,6 +86,7 @@ impl Runtime {
             &config.cameras,
             metrics.clone(),
         );
+        let devices = DeviceService::new(&config.cameras);
         Ok(Arc::new(Self {
             config,
             auth,
@@ -93,6 +96,7 @@ impl Runtime {
             snapshots,
             recordings,
             alarms,
+            devices,
         }))
     }
 
@@ -118,6 +122,7 @@ pub fn router(runtime: Arc<Runtime>) -> Router {
         .route("/v1/cameras/{camera}/live.ts", get(ts_stream))
         .merge(crate::api_recordings::routes())
         .merge(crate::api_alarms::routes())
+        .merge(crate::api_device::routes())
         .layer(middleware::from_fn_with_state(
             Arc::clone(&runtime),
             authenticate,

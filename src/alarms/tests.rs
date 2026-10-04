@@ -6,7 +6,9 @@ use cipher::{BlockEncryptMut, KeyIvInit, block_padding::Pkcs7};
 use md5::{Digest as _, Md5};
 use serde_json::json;
 
-use super::{PictureError, category, decode_picture, model, parse_list, parse_summary};
+use super::{
+    PictureError, category, decode_picture, decode_with_keys, model, parse_list, parse_summary,
+};
 
 mod feed;
 mod poller;
@@ -230,4 +232,11 @@ fn device_key_crypt_reuses_the_snapshot_decryptor() {
         decode_picture(&payload, 1, None, None),
         Err(PictureError::Invalid)
     );
+    // A stale option code falls through to the next (cloud) candidate.
+    let keys = ["WRONG1".to_owned(), code.to_owned()];
+    assert_eq!(
+        decode_with_keys(&payload, 1, None, &keys),
+        Ok(JPEG.to_vec())
+    );
+    assert!(decode_with_keys(&payload, 1, None, &[]).is_err());
 }

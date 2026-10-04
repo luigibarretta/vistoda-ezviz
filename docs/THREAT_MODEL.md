@@ -3,6 +3,7 @@
 ## Protected assets
 
 - EZVIZ session and refresh tokens;
+- camera video verification codes;
 - bridge API token;
 - camera serial, cloud topology and signed media URLs;
 - live household video, snapshots and finite recordings;
@@ -23,6 +24,8 @@ receive bridge or EZVIZ credentials.
 | Credential disclosure | Token files `0600`; request/exception redaction; no debug bodies, stream URLs or serial labels |
 | Slow-client memory exhaustion | Bounded queues; slow subscriber eviction; maximum subscribers |
 | Battery denial of service | One upstream per camera; idle grace; hard client-session lifetime; stream and snapshot rate limits; bounded recording duration |
+| Verification-code disclosure | Option codes written by jq to `0600` files, never in `cameras.json`, argv, logs or responses; cloud copies held in zeroizing memory and accepted only when they match `encryptPwd` |
+| Unintended camera changes | Device endpoints are read-only; no format, reboot, encryption toggle or record deletion; storage lookups cached 10 minutes |
 | Alarm picture abuse | HTTPS-only plain GET of vendor-signed URLs, 4 MiB cap, timeout, JPEG-magic validation, 200 alarms and 256 MiB per installation; URLs never logged or stored |
 | Disk exhaustion | Recording quota, maximum duration, atomic files, bounded ACK tombstones and explicit retention owner |
 | Malformed cloud frames | Bounded chunk sizes, producer restart backoff and no unsafe parsing in the HTTP process |

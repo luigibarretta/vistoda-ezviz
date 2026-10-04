@@ -50,15 +50,6 @@ pub(super) async fn raw_stream(
     Query(binding): Query<StreamBinding>,
 ) -> Result<Response, BridgeError> {
     verify_binding(&runtime, &camera, binding.expected_binding.as_deref())?;
-    if runtime
-        .config
-        .cameras
-        .get(&camera)
-        .ok_or(BridgeError::CameraNotFound)?
-        .decrypt_video
-    {
-        return Err(BridgeError::UnsupportedMedia);
-    }
     let hub = Arc::clone(
         runtime
             .raw
@@ -86,6 +77,11 @@ pub(super) async fn raw_stream(
             });
         }
     };
+    // The transport decides at runtime; decrypted cameras emit MPEG-TS only.
+    if first.first() == Some(&0x47) {
+        hub.unsubscribe(subscription.id);
+        return Err(BridgeError::UnsupportedMedia);
+    }
     let body = Body::from_stream(stream! {
         yield Ok::<_, Infallible>(first);
         let deadline = sleep(Duration::from_secs(runtime.config.max_live_session_seconds));

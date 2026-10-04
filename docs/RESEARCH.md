@@ -93,3 +93,67 @@ Reviewed 2026-10-04 by static decompilation of the vendor-signed `com.ezviz`
 picture layouts used by ADR-0018. The `endTime` value (last item's `time`;
 pyEzvizApi suggests a message ID) and `picCrypt=2` remain unconfirmed by an
 owned sample; Vistoda stops on a page without progress and fails closed.
+
+## Video key, microSD and playback (7.6.1.0824)
+
+Reviewed 2026-10-04 by static analysis of the same vendor-signed package
+(`com.ezviz.apk` SHA-256
+`554fd3260fd32a45e34300c29fc6577bbd7d582751628447e53d0277c123d08c`,
+`config.arm64_v8a.apk` SHA-256
+`5c01eb60839a983b4ef92e46332dd035fc5457f2f3bd70cec338dbc6f96f599a`), jadx
+output of `classes2/6/13/15/22/25.dex` and strings of `libezstreamclient.so`. pyEzvizApi `c713642f` is corroboration only.
+
+**Verification code.** `GetDeviceEncryptKeyTask` feeds the "device
+verification code" screen (`DeviceVerifyCodeActivity`) from `VideoGoNetSDK.G`,
+which posts `serial`, `checkcode` and `msgType` to
+`/api/device/query/encryptkey` and returns `encryptkey` (error 120002 asks for
+an SMS code). `MessageDecryptManager` accepts a typed code only when
+`MD5Util.getTwiceMD5String(code)` equals `STATUS.encryptPwd`
+(case-insensitive) and then stores it as the device password for decryption.
+`STATUS.isEncrypt` (0/1) is the image/video encryption switch. The cloud
+`encryptkey` is therefore the verification code that `video_cipher.rs` already
+derives its AES-128 key from (first 16 bytes, zero padded), exactly like
+snapshots and `picCrypt=1` alarm pictures. The player additionally declares
+`GET v3/devices/{serial}/{channel}/encryptkey` (`EncryptKeyResp.encryptKey`);
+Vistoda keeps the proven legacy endpoint. Toggling uses
+`PUT /v3/devices/encryptedInfo/risk` or `/api/device/updateEncrypt` with
+`validateCode`/SMS risk control; it is not implemented.
+
+**Storage status.** `StorageActivity` calls `VideoGoNetSDK.H(serial)`:
+`POST /api/device/queryStorageStatus` with form `subSerial`. The response is
+`resultCode` plus `storageStatus{result, formatingRate, storageList[]}`; each
+`StorageInfo` has `index, type, status, capacity, firstRecordTime, hdStatus,
+healthLevel`. `StorageAdapter` maps `status` 0 normal (capacity, MiB:
+`< 102400` is shown as `capacity/1024` GB), 1 abnormal, 2 unformatted,
+3 formatting; an empty list shows "no SD card". No free-space field exists.
+The page list `STATUS` also carries `diskNum`, `diskState` and
+`optionals.diskCapacity`/`diskHealth`, used by the app only as hints.
+
+**Record index.** `YsPlaybackBusPresenter` chooses by
+`isSupportNewSearchRecords()` (`supportExt["256"]`, "record search v3"):
+value 2 calls `GET v3/streaming/common/records?deviceSerial&channelNo&
+channelSerial&startTime&stopTime&recordType=-1&size=1500&version=1`; value 1
+calls `GET v3/streaming/v2/records?deviceSerial&channelNo&startTime&stopTime&
+size=100&sortBy=0&requireLabel=0`; otherwise the legacy `v3/streaming/records`
+task runs. Request times are camera-local `yyyy-MM-ddT00:00:00` and
+`…T23:59:59`. `RecordDataRemoteEzviz` base64-decodes and zlib-inflates
+`records` (V2: JSON `[{B, E, Type, Res, Res2}]`, times `yyyy-MM-dd'T'HH:mm:ss`,
+`Type == 1` is an event) or `data` (common: 8-byte entries
+`[start h, m, s, stop h, m, s, recordType, pad]` added to `baseDay`, at most
+`searchCount`; `recordType` 1 event, 8–10 special, others continuous).
+`isFinished = 0` marks a truncated V2 day; the continuation cursor (last `E`)
+is inferred, not observed. Camera-local times are converted with
+`STATUS.optionals.timeZone` (for example `UTC+02:00`).
+
+**Playback spike.** SD playback is the same cloud VTM/VTDU transport but a
+different request. `PlayCore.convertFileList` builds `VideoStreamInfo{beginTime,
+endTime, seqId}` with `CasUtils.convertCasTime` (`yyyyMMdd'T'HHmmss'Z'` in the
+phone's zone despite the `Z`) and clamps the end to `T235959Z` of the start
+day; `EZMediaPlayer.startPlayback(List<VideoStreamInfo>)` hands it to native
+`CloudClient::startPlayback`. `libezstreamclient.so` contains, beside
+`ysproto://` and `/live?`, the fragments `/playback?`, `/download?`, `&chn=`,
+`&stream=`, `&seg=`, `&begin=`, `&end=`, `&serial=`, `&streamtag=`, `&ssn=`,
+`&rctype=`, `&finterval=`, `&e2ee=` and the messages "receive seekuuid" and
+"reach the end of playback. vtmkey=%s". The exact parameter set and order, the
+`seg` syntax, whether StreamInfo `0x13b` is reused, and the seek/continue/end
+control messages are unproven, so no playback code ships (ADR-0020).

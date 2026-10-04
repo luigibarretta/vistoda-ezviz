@@ -9,9 +9,10 @@ The Rust package and executable remain `ezviz-vtm-bridge` as a compatibility
 contract for existing images, health checks and automation. The product and
 canonical repository are Vistoda EZVIZ and `vistoda-ezviz`.
 
-The released scope is snapshots, compatible live streams and finite local
-recordings. It does not provide voice talk or direct camera microSD access, and
-encrypted-stream compatibility varies by model. Home Assistant OS users should
+The released scope is snapshots, compatible live streams, finite local
+recordings, alarms and a read-only microSD status and record index. It does not
+provide voice talk or microSD playback, and encrypted-stream compatibility
+varies by model. Home Assistant OS users should
 start with the shared [setup guide](https://github.com/luigibarretta/vistoda-addons/blob/main/GETTING_STARTED.md).
 
 ## Why it exists
@@ -34,6 +35,10 @@ modify camera firmware.
 - copy-remuxed MPEG-TS (`video/mp2t`) for Home Assistant and media clients;
 - fresh JPEG snapshots with short request coalescing;
 - read-only alarm feed (cursor/long-poll) with bounded history and pictures;
+- automatic encrypted-video detection using an optional private verification
+  code or the account's hash-validated cloud copy;
+- read-only microSD status and one-day SD record index (no playback, format or
+  reboot);
 - finite media-typed MPEG-PS/MPEG-TS recordings with immutable manifests and
   SHA-256 digests;
 - server-paginated archive inventory, private spool metadata and on-demand
@@ -67,46 +72,18 @@ the discovered account flow. The [English setup guide](https://github.com/luigib
 and [guida italiana](https://github.com/luigibarretta/vistoda-addons/blob/main/GETTING_STARTED.it.md)
 cover single and multiple cameras, expected results and first checks.
 
-## Standalone development quick start
+## Standalone development
 
-Requirements: Docker with Compose, OpenSSL and the camera serial. The example
-runs as your local UID/GID so its bind-mounted state remains private and
-writable. Enroll from a trusted terminal and keep real secrets outside Git:
-
-```bash
-install -d -m 0700 config data secrets
-cp deploy/cameras.example.json config/cameras.json
-```
-
-Edit `config/cameras.json` and replace `REPLACE_WITH_SERIAL` with the real
-camera serial. Then replace the example account value below before continuing:
-
-```bash
-openssl rand -hex 32 > secrets/api_token
-chmod 600 secrets/api_token
-export VISTODA_UID="$(id -u)"
-export VISTODA_GID="$(id -g)"
-export VISTODA_EZVIZ_ACCOUNT='replace-with-your-account-email'
-docker compose -f deploy/compose.example.yaml build
-docker compose -f deploy/compose.example.yaml run --rm ezviz-vtm-bridge \
-  enroll --account "$VISTODA_EZVIZ_ACCOUNT" --token-file /data/token.json
-docker compose -f deploy/compose.example.yaml config --quiet
-docker compose -f deploy/compose.example.yaml up -d
-```
-
-The example builds the current checkout and binds only to loopback. Enrollment
-reads password and MFA without echo. Keep `VISTODA_UID` and `VISTODA_GID` set for
-later Compose commands. Configure a reviewed private-network bind only when
-another approved host must reach the bridge. See
-[`docs/OPERATIONS.md`](docs/OPERATIONS.md) for canaries, monitoring, backup and
-rollback.
+Docker Compose development, enrollment and canaries are described in the
+[operations runbook](docs/OPERATIONS.md#standalone-quick-start).
 
 ### Home Assistant app cameras
 
 The Home Assistant app accepts a bounded `cameras` list with 1–64 entries.
 Each entry uses a unique alias matching `[A-Za-z0-9_-]{1,64}`, an EZVIZ serial
 matching `[A-Za-z0-9]+`, an optional integer `channel` from 1 to 256 (default
-`1`), and an optional boolean `substream` (default `false`):
+`1`), an optional boolean `substream` (default `false`) and an optional private
+`verification_code` (4–64 visible ASCII characters, password field):
 
 ```yaml
 cameras:
@@ -114,13 +91,36 @@ cameras:
     serial: DEVICE123
     channel: 1
     substream: false
+    verification_code: ABCDEF  # optional; the label code on the camera
 ```
 
 The app atomically writes the existing alias-keyed `cameras.json` contract and
 publishes one `media_bridge` discovery device per alias. Existing installations
 with `alias`, `camera_serial`, `camera_channel`, and `substream` continue to
-work when `cameras` is missing or empty. Credentials and API tokens are not
-part of this option contract.
+work when `cameras` is missing or empty. A verification code is written only to
+a mode-0600 file and is used solely as the decryption key: the bridge follows
+the camera's cloud encryption flag, so entering the label code on a clear
+camera is harmless. Without it, an encrypted camera uses the account's
+verification code; `GET …/encryption` shows which source is usable.
+
+### Before uninstalling the EZVIZ app
+
+Vistoda does not replace every vendor function. While the official app is
+still installed:
+
+1. Note each camera's verification code (the camera label, or the device
+   verification-code page in the app's camera settings) and either keep video encryption on and enter the
+   code in the Vistoda options, or turn encryption off in the official app.
+   Vistoda never changes this setting.
+2. Make sure every camera is online, on stable Wi-Fi and on current firmware.
+3. Set detection, defence schedules and notification preferences; Vistoda
+   reads alarms but does not edit them.
+4. Format a new microSD card in the official app and confirm that
+   `GET …/storage` reports `ok` and `GET …/sd-records` lists today's clips.
+5. Move alerts to Home Assistant automations on the Vistoda alarm feed, then
+   disable phone push notifications in the official app if they duplicate.
+6. Keep the account credentials; enrollment, sharing, talk, microSD playback
+   and recovery still require the official app or its web portal.
 
 ## HTTP contract
 
@@ -133,6 +133,9 @@ part of this option contract.
 | `GET /v1/cameras/{camera}/live.ts` | shared MPEG-TS | bearer or Basic |
 | `GET /v1/cameras/{camera}/alarms?after=&wait=` | alarm cursor/long-poll batch | bearer |
 | `GET /v1/cameras/{camera}/alarms/{id}/picture.jpg` | stored alarm JPEG | bearer |
+| `GET /v1/cameras/{camera}/encryption` | encryption state and key source | bearer |
+| `GET /v1/cameras/{camera}/storage` | microSD status (10-minute cache) | bearer |
+| `GET /v1/cameras/{camera}/sd-records?date=` | one-day SD record index | bearer |
 | `POST /v1/cameras/{camera}/recordings` | finite capture | bearer |
 | `GET /v1/recordings?page=&page_size=&camera=` | paginated inventory and private spool descriptor | bearer |
 | `GET /v1/recordings/{id}` | immutable recording manifest | bearer |

@@ -12,8 +12,12 @@ pub struct CameraConfig {
     pub channel: u16,
     #[serde(default)]
     pub substream: bool,
+    /// Forces the encrypted-RTP path; cameras whose cloud status reports
+    /// video encryption use it automatically.
     #[serde(default)]
     pub decrypt_video: bool,
+    /// Optional private verification-code file. Without it, the cloud copy
+    /// is used when it matches the camera's `encryptPwd` hash.
     pub media_key_file: Option<PathBuf>,
 }
 
@@ -125,11 +129,6 @@ fn validate_cameras(cameras: &BTreeMap<String, CameraConfig>) -> Result<(), Brid
         if !(1..=256).contains(&camera.channel) {
             return Err(BridgeError::Configuration(format!(
                 "camera {alias} channel must be between 1 and 256"
-            )));
-        }
-        if camera.decrypt_video && camera.media_key_file.is_none() {
-            return Err(BridgeError::Configuration(format!(
-                "camera {alias} requires media_key_file when decrypt_video is enabled"
             )));
         }
     }

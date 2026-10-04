@@ -9,7 +9,7 @@ pub(crate) mod store;
 #[cfg(test)]
 mod tests;
 
-pub use crypto::{PictureError, decode_picture, decrypt_checksum_picture};
+pub use crypto::{PictureError, decode_picture, decode_with_keys, decrypt_checksum_picture};
 pub use model::{
     AlarmRecord, DeviceSummary, ParsedMessage, category, is_token, parse_list, parse_summary,
 };
@@ -48,8 +48,9 @@ pub trait AlarmSource: Send + Sync {
     ) -> Result<Value, BridgeError>;
     /// Plain bounded GET of a pre-signed picture URL.
     async fn alarm_picture(&self, url: &str, max_bytes: usize) -> Result<Vec<u8>, BridgeError>;
-    /// Device key for `picCrypt=1` pictures.
-    async fn picture_key(&self, camera: &CameraConfig) -> Result<String, BridgeError>;
+    /// Ordered candidate device keys for `picCrypt=1` pictures; each is tried
+    /// until the picture header hash accepts one.
+    async fn picture_keys(&self, camera: &CameraConfig) -> Result<Vec<String>, BridgeError>;
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]

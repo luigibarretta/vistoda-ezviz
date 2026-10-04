@@ -1,0 +1,23 @@
+# Alarm feed path items and schemas referenced from ../openapi.yaml.
+alarms:
+  get:
+    summary: Cursor or long-poll read of the read-only EZVIZ alarm feed
+    description: >-
+      Without after, returns up to 50 recent alarms (history included) without
+      waiting. With after, returns up to 50 alarms whose sequence is strictly
+      greater than the cursor, waiting up to wait seconds; alarms already
+      present at process start are never returned to a cursor. Sequences are
+      per camera and per process: reset the cursor when generation changes. A
+      cursor ahead of the head returns no events and the current head.
+    security: [{bearerAuth: []}]
+    parameters: [{$ref: "../openapi.yaml#/components/parameters/Camera"}, {name: after, in: query, schema: {type: integer, minimum: 0}}, {name: wait, in: query, schema: {type: integer, minimum: 0, maximum: 25, default: 0}}]
+    responses: {"200": {description: Alarm batch, content: {application/json: {schema: {$ref: "#/components/schemas/AlarmBatch"}}}}, "400": {description: Invalid cursor, wait or unknown parameter}, "404": {$ref: "../openapi.yaml#/components/responses/NotFound"}}
+picture:
+  get:
+    security: [{bearerAuth: []}]
+    parameters: [{$ref: "../openapi.yaml#/components/parameters/Camera"}, {name: alarm_id, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9_-]{1,96}$"}}]
+    responses: {"200": {description: Locally stored decrypted alarm JPEG, content: {image/jpeg: {schema: {type: string, contentEncoding: binary}}}}, "404": {$ref: "../openapi.yaml#/components/responses/NotFound"}}
+components:
+  schemas:
+    AlarmBatch: {type: object, additionalProperties: false, required: [camera, generation, next_sequence, events], properties: {camera: {type: string}, generation: {type: string, format: uuid}, next_sequence: {type: integer, minimum: 0}, events: {type: array, maxItems: 50, items: {$ref: "#/components/schemas/AlarmEvent"}}}}
+    AlarmEvent: {type: object, additionalProperties: false, required: [sequence, id, occurred_at, alarm_type, category, title, has_picture], properties: {sequence: {type: integer, minimum: 1}, id: {type: string, pattern: "^[A-Za-z0-9_-]{1,96}$"}, occurred_at: {type: integer, description: Epoch seconds}, alarm_type: {type: integer}, category: {type: string, enum: [motion, person, vehicle, doorbell, sound, pet, offline, tamper, other]}, title: {type: string, maxLength: 120}, has_picture: {type: boolean}}}

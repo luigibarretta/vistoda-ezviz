@@ -1,6 +1,8 @@
 mod alarms;
 mod client;
 mod client_stream;
+mod device;
+mod device_api;
 mod enroll;
 mod http;
 mod image;

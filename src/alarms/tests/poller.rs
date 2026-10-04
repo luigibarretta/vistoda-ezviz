@@ -53,7 +53,7 @@ impl AlarmSource for FakeSource {
         }
     }
 
-    async fn picture_key(&self, _: &CameraConfig) -> Result<String, BridgeError> {
+    async fn picture_keys(&self, _: &CameraConfig) -> Result<Vec<String>, BridgeError> {
         Err(BridgeError::Upstream("unused".into()))
     }
 }

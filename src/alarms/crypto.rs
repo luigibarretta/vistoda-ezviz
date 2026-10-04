@@ -46,6 +46,23 @@ pub fn decode_picture(
     }
 }
 
+/// Tries each candidate key; without keys the decoder reports its own error.
+pub fn decode_with_keys(
+    raw: &[u8],
+    crypt: i64,
+    checksum: Option<&str>,
+    keys: &[String],
+) -> Result<Vec<u8>, PictureError> {
+    let mut result = decode_picture(raw, crypt, checksum, keys.first().map(String::as_str));
+    for key in keys.iter().skip(1) {
+        if result.is_ok() {
+            break;
+        }
+        result = decode_picture(raw, crypt, checksum, Some(key));
+    }
+    result
+}
+
 /// Requires the JPEG SOI marker at offset zero and trims to the last EOI.
 pub fn validated_jpeg(data: &[u8]) -> Result<Vec<u8>, PictureError> {
     if !data.starts_with(&[0xff, 0xd8, 0xff]) {

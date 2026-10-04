@@ -9,7 +9,7 @@ use std::{
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    AlarmFeed, AlarmRecord, AlarmSource, PictureError, decode_picture,
+    AlarmFeed, AlarmRecord, AlarmSource, PictureError, decode_with_keys,
     fetch::{LIVE_PAGES, PRIME_PAGES, fetch_unknown},
     model::{ParsedMessage, parse_summary},
     pictures::MAX_PICTURE_BYTES,
@@ -147,19 +147,19 @@ async fn with_pictures(
     alias: &str,
     messages: &[&ParsedMessage],
 ) -> Vec<(AlarmRecord, Option<Vec<u8>>)> {
-    let mut device_key: Option<Option<String>> = None;
+    let mut device_keys: Option<Vec<String>> = None;
     let first_with_picture = messages.len().saturating_sub(PICTURES_PER_CYCLE);
     let mut batch = Vec::with_capacity(messages.len());
     for (index, message) in messages.iter().enumerate() {
         let mut jpeg = None;
         if let (true, Some(picture)) = (index >= first_with_picture, &message.picture) {
-            if picture.crypt == 1 && device_key.is_none() {
+            if picture.crypt == 1 && device_keys.is_none() {
                 let config = feed.cameras.get(alias).map(|slot| &slot.config);
-                let key = match config {
-                    Some(config) => source.picture_key(config).await.ok(),
-                    None => None,
+                let keys = match config {
+                    Some(config) => source.picture_keys(config).await.unwrap_or_default(),
+                    None => Vec::new(),
                 };
-                device_key = Some(key);
+                device_keys = Some(keys);
             }
             let download = tokio::time::timeout(
                 PICTURE_TIMEOUT,
@@ -167,11 +167,11 @@ async fn with_pictures(
             )
             .await;
             let decoded = match download {
-                Ok(Ok(raw)) => decode_picture(
+                Ok(Ok(raw)) => decode_with_keys(
                     &raw,
                     picture.crypt,
                     picture.checksum.as_deref(),
-                    device_key.as_ref().and_then(Option::as_deref),
+                    device_keys.as_deref().unwrap_or_default(),
                 ),
                 _ => Err(PictureError::Invalid),
             };

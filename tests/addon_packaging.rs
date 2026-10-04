@@ -59,6 +59,10 @@ fn assert_runtime_contract(root: &Path) {
     assert!(runner.contains("vistoda_secure_file bridge:bridge \"${data_dir}/token.json\""));
     assert!(camera_filter.contains("substream values are invalid"));
     assert!(!camera_filter.contains(".substream // false | booleans"));
+    assert!(camera_filter.contains("verification codes are invalid"));
+    assert!(runner.contains("readonly keys_dir=/data/keys"));
+    assert!(runner.contains("mkdir -m 0700 \"${keys_dir}\""));
+    assert!(runner.contains("chmod 0600 \"${key_tmp}\""));
 }
 
 fn assert_release_contract(root: &Path) {
@@ -113,4 +117,39 @@ fn camera_renderer_executes_legacy_and_multi_camera_contracts() {
     );
     assert!(!duplicate.status.success());
     assert!(String::from_utf8_lossy(&duplicate.stderr).contains("camera sources are not unique"));
+}
+
+#[test]
+fn camera_renderer_maps_verification_codes_to_private_key_files() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output = render_cameras(
+        &root,
+        r#"{"cameras":[{"alias":"front","serial":"ABC123","verification_code":"ABCDEF"},{"alias":"rear","serial":"DEF456","channel":2,"verification_code":""}]}"#,
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let rendered: serde_json::Value =
+        serde_json::from_slice(&output.stdout).unwrap_or_else(|error| panic!("{error}"));
+    // A code never forces decryption; the bridge follows the cloud flag.
+    assert_eq!(rendered["front"]["decrypt_video"], false);
+    assert_eq!(rendered["front"]["media_key_file"], "/data/keys/front.code");
+    assert_eq!(rendered["rear"]["decrypt_video"], false);
+    assert!(rendered["rear"].get("media_key_file").is_none());
+    // The code itself never reaches cameras.json.
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("ABCDEF"));
+    for invalid in ["AB C", "ABC", "\u{e9}\u{e9}\u{e9}\u{e9}"] {
+        let rejected = render_cameras(
+            &root,
+            &format!(
+                r#"{{"cameras":[{{"alias":"front","serial":"ABC123","verification_code":"{invalid}"}}]}}"#
+            ),
+        );
+        assert!(!rejected.status.success(), "{invalid}");
+        assert!(
+            String::from_utf8_lossy(&rejected.stderr).contains("verification codes are invalid")
+        );
+    }
 }

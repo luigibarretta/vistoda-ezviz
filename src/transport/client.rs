@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use async_trait::async_trait;
 use reqwest::{Client, Method, StatusCode};
@@ -8,23 +8,34 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     config::CameraConfig,
+    device::DeviceStatus,
     error::BridgeError,
     storage::{atomic_write_json, ensure_private_regular},
     transport::{
         CameraTransport, ChunkConsumer, EzvizToken,
         http::{meta_code, mobile_headers, required_string},
-        image, timeout_duration, video_pipeline,
+        image, timeout_duration,
     },
     vtm::VtmSession,
 };
+
+/// One cached status lookup; `status: None` records a recent failure.
+pub(super) struct StatusEntry {
+    pub(super) expires: tokio::time::Instant,
+    pub(super) status: Option<DeviceStatus>,
+}
+
+/// Per-serial single-flight slots; the outer lock is never held across I/O.
+pub(super) type StatusCache = std::sync::Mutex<BTreeMap<String, Arc<Mutex<Option<StatusEntry>>>>>;
 
 pub struct EzvizTransport {
     pub(super) client: Client,
     pub(super) token: RwLock<EzvizToken>,
     token_path: PathBuf,
-    timeout_seconds: u64,
     pub(super) allocation_lock: Mutex<()>,
-    ffmpeg_path: PathBuf,
+    pub(super) ffmpeg_path: PathBuf,
+    pub(super) timeout_seconds: u64,
+    pub(super) status_cache: StatusCache,
 }
 
 impl EzvizTransport {
@@ -47,6 +58,7 @@ impl EzvizTransport {
             timeout_seconds,
             allocation_lock: Mutex::new(()),
             ffmpeg_path,
+            status_cache: std::sync::Mutex::new(BTreeMap::new()),
         };
         transport.refresh_session().await?;
         transport.ensure_service_urls().await?;
@@ -172,29 +184,6 @@ impl EzvizTransport {
         }
         required_string(&value, "encryptkey")
     }
-
-    async fn stream_encrypted_video(
-        &self,
-        camera: &CameraConfig,
-        cancel: CancellationToken,
-        output: Arc<dyn ChunkConsumer>,
-    ) -> Result<(), BridgeError> {
-        let key_path = camera.media_key_file.as_ref().ok_or_else(|| {
-            BridgeError::Configuration("encrypted camera has no verification-code file".into())
-        })?;
-        let verification_code = ensure_private_regular(key_path, 1)?;
-        let url = self.cloud_stream_url(camera).await?;
-        let session = VtmSession::connect(url, timeout_duration(self.timeout_seconds)).await?;
-        video_pipeline::copy_as_mpeg_ts(
-            session,
-            &verification_code,
-            &self.ffmpeg_path,
-            self.timeout_seconds,
-            cancel,
-            output,
-        )
-        .await
-    }
 }
 
 pub(super) fn success_code(value: Option<&Value>) -> bool {
@@ -233,7 +222,7 @@ impl CameraTransport for EzvizTransport {
         cancel: CancellationToken,
         output: Arc<dyn ChunkConsumer>,
     ) -> Result<(), BridgeError> {
-        if camera.decrypt_video {
+        if self.video_is_encrypted(camera).await {
             return self.stream_encrypted_video(camera, cancel, output).await;
         }
         let url = self.cloud_stream_url(camera).await?;

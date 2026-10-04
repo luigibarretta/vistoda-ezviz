@@ -1,6 +1,6 @@
 # ADR-0016: Vistoda archive, microSD and talk boundaries
 
-- Status: accepted
+- Status: accepted; microSD status and index narrowed by ADR-0019
 - Date: 2026-09-09
 
 ## Context

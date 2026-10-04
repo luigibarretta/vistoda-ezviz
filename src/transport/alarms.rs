@@ -10,8 +10,8 @@ use serde_json::Value;
 use crate::{
     alarms::AlarmSource,
     config::CameraConfig,
+    device::candidate_keys,
     error::BridgeError,
-    storage::ensure_private_regular,
     transport::{EzvizTransport, http::meta_code},
 };
 
@@ -24,8 +24,9 @@ const SESSION_EXPIRED: i64 = 99_997;
 const PAGE_LIMIT: &str = "20";
 
 impl EzvizTransport {
-    /// GET with session refresh on HTTP 401 or `meta.code` 99997.
-    async fn message_json(
+    /// GET with session refresh on HTTP 401 or `meta.code` 99997; any other
+    /// non-200 `meta.code` is an error. Shared by the device APIs.
+    pub(super) async fn message_json(
         &self,
         path: &str,
         query: &[(&str, String)],
@@ -139,12 +140,13 @@ impl AlarmSource for EzvizTransport {
         Ok(data)
     }
 
-    async fn picture_key(&self, camera: &CameraConfig) -> Result<String, BridgeError> {
-        if let Some(path) = camera.media_key_file.as_ref()
-            && let Ok(code) = ensure_private_regular(path, 1)
-        {
-            return Ok(code);
-        }
-        self.camera_key(&camera.serial).await
+    async fn picture_keys(&self, camera: &CameraConfig) -> Result<Vec<String>, BridgeError> {
+        // Same hash-checked order as video: option, then cloud.
+        let status = self.cached_status(camera).await.ok();
+        Ok(candidate_keys(self, camera, status.as_ref())
+            .await
+            .iter()
+            .map(|key| key.code().to_owned())
+            .collect())
     }
 }

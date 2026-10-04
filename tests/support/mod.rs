@@ -22,8 +22,14 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 const TOKEN: &str = "0123456789abcdef0123456789abcdef";
+const PS_CHUNK: &[u8] = b"\x00\x00\x01\xba-media";
+const TS_CHUNK: &[u8] = b"\x47\x40\x00\x10-media";
 
-struct FakeTransport;
+/// Upstream emitting `chunk`, or MPEG-TS when the camera takes the decrypting
+/// path, mirroring the transport's runtime decision.
+struct FakeTransport {
+    chunk: &'static [u8],
+}
 
 #[async_trait]
 impl CameraTransport for FakeTransport {
@@ -33,12 +39,17 @@ impl CameraTransport for FakeTransport {
 
     async fn stream_mpeg_ps(
         &self,
-        _: &CameraConfig,
+        camera: &CameraConfig,
         cancel: CancellationToken,
         output: Arc<dyn ChunkConsumer>,
     ) -> Result<(), BridgeError> {
         while !cancel.is_cancelled() {
-            if !output.consume(b"\x00\x00\x01\xba-media".to_vec()) {
+            let chunk = if camera.decrypt_video {
+                TS_CHUNK
+            } else {
+                self.chunk
+            };
+            if !output.consume(chunk.to_vec()) {
                 break;
             }
             sleep(Duration::from_millis(10)).await;
@@ -72,15 +83,25 @@ impl TestSystem {
     }
 
     pub fn with_live_session_limit(max_live_session_seconds: u64) -> Self {
-        Self::configured(max_live_session_seconds, false)
+        Self::configured(max_live_session_seconds, false, PS_CHUNK)
     }
 
     #[allow(dead_code)]
     pub fn with_encrypted_camera() -> Self {
-        Self::configured(90, true)
+        Self::configured(90, true, PS_CHUNK)
     }
 
-    fn configured(max_live_session_seconds: u64, decrypt_video: bool) -> Self {
+    /// Clear configuration whose upstream turns out to be decrypted MPEG-TS.
+    #[allow(dead_code)]
+    pub fn with_detected_encryption() -> Self {
+        Self::configured(90, false, TS_CHUNK)
+    }
+
+    fn configured(
+        max_live_session_seconds: u64,
+        decrypt_video: bool,
+        chunk: &'static [u8],
+    ) -> Self {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let token_path = directory.path().join("api-token");
         fs::write(&token_path, TOKEN).unwrap_or_else(|error| panic!("{error}"));
@@ -116,7 +137,7 @@ impl TestSystem {
             snapshot_stale_seconds: 30,
             alarm_poll_seconds: 0,
         };
-        let runtime = Runtime::build(config, Arc::new(FakeTransport))
+        let runtime = Runtime::build(config, Arc::new(FakeTransport { chunk }))
             .unwrap_or_else(|error| panic!("{error}"));
         Self { directory, runtime }
     }

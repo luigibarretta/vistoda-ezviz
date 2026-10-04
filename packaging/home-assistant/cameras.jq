@@ -4,13 +4,19 @@ def valid_serial:
   type == "string" and test("^[A-Za-z0-9]+$");
 def valid_channel:
   type == "number" and floor == . and . >= 1 and . <= 256;
+# Optional private video verification code: printable ASCII without spaces.
+def valid_code:
+  . == null or (type == "string" and (. == "" or test("^[!-~]{4,64}$")));
+def has_code:
+  type == "string" and length > 0;
 def camera_item:
   if type != "object" then error("each cameras item must be an object") else
     {
       alias: .alias,
       serial: (if has("serial") then .serial elif has("camera_serial") then .camera_serial else null end),
       channel: (if has("channel") then .channel elif has("camera_channel") then .camera_channel else 1 end),
-      substream: (if has("substream") then .substream else false end)
+      substream: (if has("substream") then .substream else false end),
+      verification_code: .verification_code
     }
   end;
 def legacy_item:
@@ -18,7 +24,8 @@ def legacy_item:
     alias: .alias,
     serial: .camera_serial,
     channel: (.camera_channel // 1),
-    substream: (.substream // false)
+    substream: (.substream // false),
+    verification_code: .verification_code
   };
 
 (if (has("cameras") | not) or .cameras == null or
@@ -39,15 +46,21 @@ elif any($items[]; (.channel | valid_channel | not)) then
   error("channels are invalid")
 elif any($items[]; (.substream | type) != "boolean") then
   error("substream values are invalid")
+elif any($items[]; (.verification_code | valid_code | not)) then
+  error("verification codes are invalid")
 elif (($items | map("\(.serial):\(.channel)") | length) !=
       ($items | map("\(.serial):\(.channel)") | unique | length)) then
   error("camera sources are not unique")
 else
   reduce $items[] as $item ({};
-    .[$item.alias] = {
+    .[$item.alias] = ({
       serial: $item.serial,
       channel: $item.channel,
       substream: $item.substream,
+      # The bridge decides at runtime from the cloud isEncrypt flag; a code
+      # only supplies the key, so clear cameras keep their plain path.
       decrypt_video: false
-    })
+    } + (if ($item.verification_code | has_code)
+         then {media_key_file: "/data/keys/\($item.alias).code"}
+         else {} end)))
 end

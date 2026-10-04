@@ -1,0 +1,89 @@
+# Read-only camera device path items referenced from ../openapi.yaml.
+# None of these operations formats, reboots or reconfigures a camera.
+encryption:
+  get:
+    summary: Video encryption state and usable verification-code source
+    description: >-
+      video_encrypted is the cloud STATUS.isEncrypt flag (null when unknown).
+      key_source is option when the configured private code matches the
+      camera's encryptPwd hash, cloud when the account's verification-code copy
+      matches it, otherwise none. Codes are never returned. Cached for 10
+      minutes (60 seconds after a failed lookup).
+    security: [{bearerAuth: []}]
+    parameters: [{$ref: "../openapi.yaml#/components/parameters/Camera"}]
+    responses:
+      "200":
+        description: Encryption report
+        headers: {Cache-Control: {schema: {type: string, const: no-store}}}
+        content: {application/json: {schema: {$ref: "#/components/schemas/Encryption"}}}
+      "404": {$ref: "../openapi.yaml#/components/responses/NotFound"}
+      "503": {description: EZVIZ runtime is not connected}
+storage:
+  get:
+    summary: microSD card status
+    description: >-
+      Mirrors the official app's storage page. Fetched from EZVIZ at most once
+      per camera every 10 minutes; a failed lookup reports unknown and is
+      retried after 60 seconds. free_mb is omitted because EZVIZ does not
+      report it; formatting in progress is reported as unknown.
+    security: [{bearerAuth: []}]
+    parameters: [{$ref: "../openapi.yaml#/components/parameters/Camera"}]
+    responses:
+      "200":
+        description: microSD status
+        headers: {Cache-Control: {schema: {type: string, const: no-store}}}
+        content: {application/json: {schema: {$ref: "#/components/schemas/SdStorage"}}}
+      "404": {$ref: "../openapi.yaml#/components/responses/NotFound"}
+      "503": {description: EZVIZ runtime is not connected}
+sdRecords:
+  get:
+    summary: microSD recording index for one camera-local day
+    description: >-
+      Read-only list of recorded intervals on the camera microSD card for one
+      calendar day in the camera's time zone, ordered by start and bounded to
+      500 items. Times are epoch seconds. Playback is not provided.
+    security: [{bearerAuth: []}]
+    parameters:
+      - $ref: "../openapi.yaml#/components/parameters/Camera"
+      - {name: date, in: query, required: true, schema: {type: string, format: date, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}}
+    responses:
+      "200":
+        description: Record index
+        headers: {Cache-Control: {schema: {type: string, const: no-store}}}
+        content: {application/json: {schema: {$ref: "#/components/schemas/SdRecordList"}}}
+      "400": {description: Missing, malformed or extra query parameter}
+      "404": {$ref: "../openapi.yaml#/components/responses/NotFound"}
+      "503": {description: EZVIZ record search is unavailable}
+components:
+  schemas:
+    Encryption:
+      type: object
+      additionalProperties: false
+      required: [video_encrypted, key_source]
+      properties:
+        video_encrypted: {type: [boolean, "null"]}
+        key_source: {type: string, enum: [option, cloud, none]}
+    SdStorage:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: {type: string, enum: [ok, no_card, unformatted, error, unknown]}
+        capacity_mb: {type: integer, minimum: 1}
+        free_mb: {type: integer, minimum: 0}
+    SdRecordList:
+      type: object
+      additionalProperties: false
+      required: [records]
+      properties:
+        records:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            additionalProperties: false
+            required: [start, end, type]
+            properties:
+              start: {type: integer, description: Epoch seconds}
+              end: {type: integer, description: Epoch seconds}
+              type: {type: string, enum: [event, continuous, other]}

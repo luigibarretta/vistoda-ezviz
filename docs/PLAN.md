@@ -4,7 +4,7 @@ This document records the release gates for Vistoda EZVIZ. The supported user
 surface is defined by the repository README, OpenAPI contract and Vistoda
 compatibility matrix.
 
-## Current 0.8.0 scope
+## Current 0.9.0 scope
 
 - private account enrollment and rotating session storage;
 - complete bounded camera inventory pagination;
@@ -17,6 +17,10 @@ compatibility matrix.
 - Home Assistant and SceneTrove consumer contracts;
 - read-only alarm feed with cursor/long-poll API, bounded persisted history
   and locally stored decrypted alarm pictures (ADR-0018);
+- automatic encrypted-video detection with an optional private verification
+  code or the hash-validated cloud copy, plus a read-only encryption report;
+- read-only microSD status (10-minute cache) and one-day SD record index
+  (ADR-0019);
 - health metrics, rootless packaging and signed multi-architecture images.
 
 Owned-camera evidence covered snapshot decoding, H.264/AAC media, concurrent
@@ -42,15 +46,16 @@ return to zero.
 
 ## Known boundary
 
-The release does not provide two-way voice talk or direct access to files on a
-camera microSD card. Those features require a usable, authorized EZVIZ Open
-Platform path or new owner-authorized protocol evidence. The Android SDK is not
+The release does not provide two-way voice talk, microSD playback, download or
+card administration. Talk requires a usable, authorized EZVIZ Open Platform
+path or new owner-authorized protocol evidence; playback is a proposed VTM
+extension pending wire evidence (ADR-0020). The Android SDK is not
 a Linux runtime dependency and is not shipped in the provider image.
 
 Encrypted-stream support covers the implemented RTP/H.264/HEVC profiles, not
 every EZVIZ model or firmware. Unsupported encryption fails without emitting
 ciphertext as playable media. Keep the official EZVIZ app for account recovery,
-talk, microSD administration and unsupported models.
+talk, encryption toggling, microSD playback/formatting and unsupported models.
 
 ## Future changes
 
