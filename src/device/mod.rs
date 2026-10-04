@@ -1,6 +1,7 @@
 //! Read-only camera device APIs: video encryption, microSD status and the
 //! SD-card record index. Nothing here formats, reboots or toggles a camera.
 
+mod guard;
 mod key;
 mod model;
 mod records;
@@ -10,9 +11,12 @@ mod storage;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_key;
+#[cfg(test)]
 mod tests_service;
 
-pub use key::{KeySource, VideoKey, candidate_keys, matches_hash, resolve_video_key, twice_md5};
+pub use guard::{CLOUD_KEY_INTERVAL_SECONDS, CloudKeyGuard};
+pub use key::{KeySource, VideoKey, candidate_keys, matches_hash, report_key_source, twice_md5};
 pub use model::{DeviceStatus, RecordSearchVersion, parse_device_status, parse_utc_offset};
 pub use records::{
     MAX_RECORDS, MAX_V2_PAGES, RecordQuery, SdRecord, V2_PAGE_SIZE, day_window, decode_payload,
@@ -47,10 +51,16 @@ pub trait DeviceSource: Send + Sync {
     /// `STATUS` and capability data from the resource page list.
     async fn device_status(&self, camera: &CameraConfig) -> Result<DeviceStatus, BridgeError>;
     /// Cloud copy of the verification code (`/api/device/query/encryptkey`).
+    /// Implementations must apply the 24-hour `CloudKeyGuard`; callers use
+    /// it only when a decryption actually needs the code.
     async fn cloud_verification_code(
         &self,
         camera: &CameraConfig,
     ) -> Result<Zeroizing<String>, BridgeError>;
+    /// Code already fetched in this process; never contacts the cloud.
+    fn cached_cloud_code(&self, _camera: &CameraConfig) -> Option<Zeroizing<String>> {
+        None
+    }
     /// Raw `/api/device/queryStorageStatus` response.
     async fn storage_status(&self, camera: &CameraConfig) -> Result<Value, BridgeError>;
     /// One raw record-index response.

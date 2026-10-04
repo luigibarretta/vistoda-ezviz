@@ -59,29 +59,39 @@ pub fn matches_hash(code: &str, hash: Option<&str>) -> bool {
     })
 }
 
-/// Ordered usable verification codes, option first.
+/// Usable verification codes for an actual decryption.
 ///
-/// With a cloud `encryptPwd` hash only matching codes are returned (the cloud
-/// copy only when the option does not match). Without a hash both the option
-/// code and the cloud copy are returned, so callers can try each; image
-/// headers and the RTP parameter set reject a wrong one. Neither the code nor
-/// the serial is ever logged.
+/// A readable option code that matches `encryptPwd` (or any readable option
+/// code when no hash is known) is used alone and the cloud is never asked.
+/// Only without a usable option code is the cloud copy requested, through the
+/// source's 24-hour guard. Neither the code nor the serial is ever logged.
 pub async fn candidate_keys(
     source: &dyn DeviceSource,
     camera: &CameraConfig,
     status: Option<&DeviceStatus>,
 ) -> Vec<VideoKey> {
     let hash = status.and_then(|status| status.encrypt_pwd_hash.as_deref());
-    let mut keys: Vec<VideoKey> = option_key(camera, hash).into_iter().collect();
-    if hash.is_some() && !keys.is_empty() {
-        return keys;
+    if let Some(option) = option_key(camera, hash) {
+        return vec![option];
     }
-    if let Some(cloud) = cloud_key(source, camera, hash).await
-        && !keys.iter().any(|key| key.code() == cloud.code())
-    {
-        keys.push(cloud);
+    cloud_key(source, camera, hash).await.into_iter().collect()
+}
+
+/// Key source reported by `GET …/encryption`; never contacts the cloud.
+#[must_use]
+pub fn report_key_source(
+    source: &dyn DeviceSource,
+    camera: &CameraConfig,
+    status: Option<&DeviceStatus>,
+) -> KeySource {
+    let hash = status.and_then(|status| status.encrypt_pwd_hash.as_deref());
+    if option_key(camera, hash).is_some() {
+        return KeySource::Option;
     }
-    keys
+    match source.cached_cloud_code(camera) {
+        Some(code) if matches_hash(&code, hash) => KeySource::Cloud,
+        _ => KeySource::None,
+    }
 }
 
 /// The app option's code when it is readable and matches the camera.
@@ -129,18 +139,6 @@ async fn cloud_key(
             None
         }
     }
-}
-
-/// First usable code, as reported by the encryption endpoint.
-pub async fn resolve_video_key(
-    source: &dyn DeviceSource,
-    camera: &CameraConfig,
-    status: Option<&DeviceStatus>,
-) -> Option<VideoKey> {
-    candidate_keys(source, camera, status)
-        .await
-        .into_iter()
-        .next()
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: EZVIZ VTM Bridge
-  version: 1.7.0
+  version: 1.7.1
   description: Internal bounded media contract for Home Assistant and SceneTrove.
 servers: [{url: http://ezviz-vtm-bridge:8765}]
 paths:

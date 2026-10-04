@@ -24,11 +24,21 @@ record-index calls the app makes.
   60 seconds, waited for at most 3 seconds); `decrypt_video` is only the
   fallback when the flag is unknown. The key is the option code when it
   matches `encryptPwd`, else the cloud copy when it matches. Without a hash
-  both are tried in that order; a code rejected by the RTP parameter set or
-  by a picture header hash falls through to the next. Alarm pictures use the
-  same order. `live.mpegps` answers `409` once MPEG-TS is produced.
+  the option code is used alone; the guarded cloud copy is the fallback only
+  when no option code exists or it fails the hash. Alarm pictures and
+  snapshots use the same order. `live.mpegps` answers `409` once MPEG-TS is
+  produced.
 - `GET /v1/cameras/{camera}/encryption` reports `video_encrypted` and
-  `key_source` (`option`, `cloud`, `none`); results are cached 10 minutes.
+  `key_source` (`option`, `cloud`, `none`) from local state only; results are
+  cached 10 minutes.
+- 0.9.1 amendment: the 0.9.0 deployment showed that `/api/device/query/
+  encryptkey` from a third-party terminal makes EZVIZ email the owner a
+  verification code. The cloud code is now requested only for an actual
+  decryption without a usable option code (an option code is never
+  second-guessed by a cloud lookup), cached in memory for the process
+  lifetime, and limited to one request per camera every 24 hours by a
+  persisted attempt time (`/data/cloud-key-attempts.json`). Any refusal,
+  including result 120002, pauses that camera for 24 hours.
 - `GET /v1/cameras/{camera}/storage` maps `/api/device/queryStorageStatus`
   to `ok`, `no_card`, `unformatted`, `error` or `unknown`, with
   `capacity_mb`. It is fetched at most every 10 minutes per camera and only on
@@ -43,8 +53,9 @@ record-index calls the app makes.
 
 ## Consequences
 
-- Encrypted cameras work without manual secret files when the account can
-  read the verification code; a configured code takes precedence.
+- Encrypted cameras should be configured with their label code; without it,
+  the cloud copy may work but its first request can email or text the owner
+  a verification code, and a refusal pauses decryption for 24 hours.
 - Every new call is read-only and bounded. A wrong code is never used silently
   when the cloud provides a hash.
 - Record times rely on the camera's reported fixed offset; on daylight-saving

@@ -159,6 +159,12 @@ async fn with_pictures(
                     Some(config) => source.picture_keys(config).await.unwrap_or_default(),
                     None => Vec::new(),
                 };
+                if keys.is_empty() {
+                    // No option code and the cloud lookup is latched: skip.
+                    feed.metrics
+                        .increment("alarm_pictures_key_unavailable_total", alias)
+                        .await;
+                }
                 device_keys = Some(keys);
             }
             let download = tokio::time::timeout(

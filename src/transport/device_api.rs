@@ -31,7 +31,11 @@ impl DeviceSource for EzvizTransport {
         &self,
         camera: &CameraConfig,
     ) -> Result<Zeroizing<String>, BridgeError> {
-        self.camera_key(&camera.serial).await.map(Zeroizing::new)
+        self.camera_key(&camera.serial).await
+    }
+
+    fn cached_cloud_code(&self, camera: &CameraConfig) -> Option<Zeroizing<String>> {
+        self.cached_camera_key(&camera.serial)
     }
 
     async fn storage_status(&self, camera: &CameraConfig) -> Result<Value, BridgeError> {

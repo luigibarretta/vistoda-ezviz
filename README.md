@@ -100,8 +100,11 @@ with `alias`, `camera_serial`, `camera_channel`, and `substream` continue to
 work when `cameras` is missing or empty. A verification code is written only to
 a mode-0600 file and is used solely as the decryption key: the bridge follows
 the camera's cloud encryption flag, so entering the label code on a clear
-camera is harmless. Without it, an encrypted camera uses the account's
-verification code; `GET …/encryption` shows which source is usable.
+camera is harmless. **Enter the label code for every encrypted camera.**
+Without it, Vistoda asks EZVIZ for the account's copy only when a decryption
+needs it, at most once per camera every 24 hours (also across restarts):
+that request can make EZVIZ email or text the owner a verification code.
+`GET …/encryption` never makes that request.
 
 ### Before uninstalling the EZVIZ app
 

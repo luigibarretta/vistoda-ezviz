@@ -13,9 +13,9 @@ use tokio::{
 };
 
 use super::{
-    DeviceSource, ENCRYPTION_TTL, EncryptionReport, FAILURE_TTL, KeySource, RECORDS_PAST_TTL,
+    DeviceSource, ENCRYPTION_TTL, EncryptionReport, FAILURE_TTL, RECORDS_PAST_TTL,
     RECORDS_RECENT_TTL, RecordList, STORAGE_TTL, StorageReport, parse_storage_status,
-    resolve_video_key, search::lookup_day,
+    report_key_source, search::lookup_day,
 };
 use crate::{config::CameraConfig, error::BridgeError};
 
@@ -117,10 +117,11 @@ impl DeviceService {
         }
         let source = self.source()?;
         let status = source.device_status(&slot.config).await.ok();
-        let key = resolve_video_key(source.as_ref(), &slot.config, status.as_ref()).await;
+        // Never requests the cloud code: that lookup can trigger an EZVIZ
+        // verification email or SMS to the account owner.
         let value = EncryptionReport {
             video_encrypted: status.as_ref().and_then(|status| status.video_encrypted),
-            key_source: key.as_ref().map_or(KeySource::None, |key| key.source),
+            key_source: report_key_source(source.as_ref(), &slot.config, status.as_ref()),
         };
         let ttl = if status.is_some() {
             ENCRYPTION_TTL

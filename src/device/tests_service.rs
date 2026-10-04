@@ -41,8 +41,8 @@ async fn storage_is_cached_until_its_window_expires() {
 }
 
 #[tokio::test]
-async fn encryption_report_combines_status_and_key_source() {
-    let (known, _) = service(Fake {
+async fn encryption_endpoint_never_calls_the_cloud_source() {
+    let (known, fake) = service(Fake {
         status: Some(DeviceStatus {
             video_encrypted: Some(true),
             encrypt_pwd_hash: Some(twice_md5(CODE)),
@@ -57,9 +57,10 @@ async fn encryption_report_combines_status_and_key_source() {
         .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(
         serde_json::to_value(report).unwrap_or_default(),
-        json!({"video_encrypted": true, "key_source": "cloud"})
+        json!({"video_encrypted": true, "key_source": "none"})
     );
-    let (unknown, _) = service(Fake::default());
+    assert_eq!(fake.cloud_calls.load(Ordering::SeqCst), 0);
+    let (unknown, fake) = service(Fake::default());
     let report = unknown
         .encryption("front")
         .await
@@ -68,6 +69,7 @@ async fn encryption_report_combines_status_and_key_source() {
         serde_json::to_value(report).unwrap_or_default(),
         json!({"video_encrypted": null, "key_source": "none"})
     );
+    assert_eq!(fake.cloud_calls.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

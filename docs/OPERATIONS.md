@@ -114,7 +114,18 @@ stopped resets them. Errors back off to five minutes and log no URLs or serials.
 encrypted and whether the option code or the account's cloud copy is usable.
 `key_source: none` on an encrypted camera means live view will fail closed:
 enter the verification code in the app options or disable encryption in the
-official app. `GET …/storage` and `GET …/sd-records?date=YYYY-MM-DD` are
+official app. The endpoint itself never requests the cloud code.
+
+Requesting the account's cloud copy of the code
+(`/api/device/query/encryptkey`) can make EZVIZ email or text the owner a
+verification code. Vistoda sends it only for an actual decryption (encrypted
+live start, snapshot or alarm picture) without a usable option code, at most
+once per camera every 24 hours; the attempt time is kept in
+`/data/cloud-key-attempts.json` (hashed serials, no codes) so restarts do not
+repeat it. A refused request is logged once and pauses that camera's lookup
+for 24 hours: encrypted live starts fail with a clear error and encrypted
+alarm pictures are skipped (`alarm_pictures_key_unavailable_total`). Deleting
+the file lifts the pause; prefer entering the label code instead. `GET …/storage` and `GET …/sd-records?date=YYYY-MM-DD` are
 read-only; storage is fetched from EZVIZ at most once per camera every 10
 minutes, so a freshly inserted card may take that long to appear.
 

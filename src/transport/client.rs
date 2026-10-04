@@ -6,9 +6,10 @@ use serde_json::Value;
 use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
+use super::cloud_key::CLOUD_KEY_STATE_FILE;
 use crate::{
     config::CameraConfig,
-    device::DeviceStatus,
+    device::{CloudKeyGuard, DeviceStatus},
     error::BridgeError,
     storage::{atomic_write_json, ensure_private_regular},
     transport::{
@@ -36,6 +37,7 @@ pub struct EzvizTransport {
     pub(super) ffmpeg_path: PathBuf,
     pub(super) timeout_seconds: u64,
     pub(super) status_cache: StatusCache,
+    pub(super) cloud_keys: CloudKeyGuard,
 }
 
 impl EzvizTransport {
@@ -54,11 +56,13 @@ impl EzvizTransport {
                 .redirect(reqwest::redirect::Policy::limited(3))
                 .build()?,
             token: RwLock::new(token),
-            token_path: path,
+            token_path: path.clone(),
             timeout_seconds,
             allocation_lock: Mutex::new(()),
             ffmpeg_path,
             status_cache: std::sync::Mutex::new(BTreeMap::new()),
+            // Persisted next to the session token, inside the private /data.
+            cloud_keys: CloudKeyGuard::load(path.with_file_name(CLOUD_KEY_STATE_FILE)),
         };
         transport.refresh_session().await?;
         transport.ensure_service_urls().await?;
@@ -158,32 +162,6 @@ impl EzvizTransport {
         }
         self.client.request(method, url).headers(headers)
     }
-
-    pub(super) async fn camera_key(&self, serial: &str) -> Result<String, BridgeError> {
-        let token = self.token.read().await.clone();
-        let feature = token.feature_code.as_deref().unwrap_or_default();
-        let url = format!("https://{}/api/device/query/encryptkey", token.api_url);
-        let response = self
-            .request(Method::POST, &url, &token)
-            .form(&[
-                ("checkcode", ""),
-                ("serial", serial),
-                ("clientNo", "web_site"),
-                ("clientType", "3"),
-                ("netType", "WIFI"),
-                ("featureCode", feature),
-                ("sessionId", &token.session_id),
-            ])
-            .send()
-            .await?;
-        let value: Value = response.json().await?;
-        if !success_code(value.get("resultCode")) {
-            return Err(BridgeError::Upstream(
-                "camera image key request failed".into(),
-            ));
-        }
-        required_string(&value, "encryptkey")
-    }
 }
 
 pub(super) fn success_code(value: Option<&Value>) -> bool {
@@ -209,7 +187,7 @@ impl CameraTransport for EzvizTransport {
         }
         let bytes = response.bytes().await?.to_vec();
         let clear = if bytes.windows(16).any(|part| part == b"hikencodepicture") {
-            image::decrypt_image(&bytes, &self.camera_key(&camera.serial).await?)?
+            self.decrypt_snapshot(camera, &bytes).await?
         } else {
             bytes
         };

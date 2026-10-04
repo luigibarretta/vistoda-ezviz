@@ -2,7 +2,6 @@
 
 use std::{
     collections::BTreeMap,
-    os::unix::fs::PermissionsExt,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -29,7 +28,7 @@ pub(super) fn utc_status() -> DeviceStatus {
     }
 }
 
-fn camera(key_file: Option<std::path::PathBuf>) -> CameraConfig {
+pub(super) fn camera(key_file: Option<std::path::PathBuf>) -> CameraConfig {
     CameraConfig {
         serial: "never-exposed".into(),
         channel: 1,
@@ -44,6 +43,8 @@ pub(super) struct Fake {
     pub(super) status: Option<DeviceStatus>,
     pub(super) cloud: Option<&'static str>,
     pub(super) pages: Vec<Value>,
+    pub(super) cached: Option<&'static str>,
+    pub(super) cloud_calls: AtomicUsize,
     pub(super) storage_calls: AtomicUsize,
     pub(super) record_calls: AtomicUsize,
 }
@@ -58,9 +59,14 @@ impl DeviceSource for Fake {
         &self,
         _: &CameraConfig,
     ) -> Result<Zeroizing<String>, BridgeError> {
+        self.cloud_calls.fetch_add(1, Ordering::SeqCst);
         self.cloud
             .map(|code| Zeroizing::new(code.to_owned()))
             .ok_or(BridgeError::UpstreamUnavailable)
+    }
+
+    fn cached_cloud_code(&self, _: &CameraConfig) -> Option<Zeroizing<String>> {
+        self.cached.map(|code| Zeroizing::new(code.to_owned()))
     }
 
     async fn storage_status(&self, _: &CameraConfig) -> Result<Value, BridgeError> {
@@ -173,64 +179,4 @@ fn normalize_sorts_dedups_and_caps() {
     assert_eq!(output[0].start, 0);
     assert_eq!(output[5].start, 5);
     assert_eq!(output[6].start, 6);
-}
-
-#[tokio::test]
-async fn option_code_wins_only_when_it_matches_the_cloud_hash() {
-    let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-    let path = directory.path().join("front.code");
-    std::fs::write(&path, format!("{CODE}\n")).unwrap_or_else(|e| panic!("{e}"));
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-        .unwrap_or_else(|e| panic!("{e}"));
-    let matching = DeviceStatus {
-        encrypt_pwd_hash: Some(twice_md5(CODE)),
-        ..DeviceStatus::default()
-    };
-    let fake = Fake {
-        cloud: Some(CODE),
-        ..Fake::default()
-    };
-    let with_option = camera(Some(path.clone()));
-    let key = resolve_video_key(&fake, &with_option, Some(&matching)).await;
-    assert_eq!(key.as_ref().map(|key| key.source), Some(KeySource::Option));
-    assert_eq!(key.as_ref().map(VideoKey::code), Some(CODE));
-
-    let other = DeviceStatus {
-        encrypt_pwd_hash: Some(twice_md5("ZZZZZZ")),
-        ..DeviceStatus::default()
-    };
-    assert!(
-        resolve_video_key(&fake, &with_option, Some(&other))
-            .await
-            .is_none()
-    );
-    let cloud = resolve_video_key(&fake, &camera(None), Some(&matching)).await;
-    assert_eq!(cloud.map(|key| key.source), Some(KeySource::Cloud));
-    let offline = Fake::default();
-    assert!(
-        resolve_video_key(&offline, &camera(None), None)
-            .await
-            .is_none()
-    );
-    // Without a hash both sources are candidates, option first.
-    let cloud_other = Fake {
-        cloud: Some("ZZZZZZ"),
-        ..Fake::default()
-    };
-    let both = candidate_keys(&cloud_other, &with_option, None).await;
-    let sources: Vec<_> = both.iter().map(|key| key.source).collect();
-    assert_eq!(sources, [KeySource::Option, KeySource::Cloud]);
-    // With a hash, a stale option code yields only the matching cloud copy.
-    assert!(
-        candidate_keys(&fake, &with_option, Some(&other))
-            .await
-            .is_empty()
-    );
-    let stale = DeviceStatus {
-        encrypt_pwd_hash: Some(twice_md5("ZZZZZZ")),
-        ..DeviceStatus::default()
-    };
-    let fallback = candidate_keys(&cloud_other, &with_option, Some(&stale)).await;
-    let sources: Vec<_> = fallback.iter().map(|key| key.source).collect();
-    assert_eq!(sources, [KeySource::Cloud]);
 }

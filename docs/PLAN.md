@@ -4,7 +4,7 @@ This document records the release gates for Vistoda EZVIZ. The supported user
 surface is defined by the repository README, OpenAPI contract and Vistoda
 compatibility matrix.
 
-## Current 0.9.0 scope
+## Current 0.9.1 scope
 
 - private account enrollment and rotating session storage;
 - complete bounded camera inventory pagination;
@@ -18,7 +18,8 @@ compatibility matrix.
 - read-only alarm feed with cursor/long-poll API, bounded persisted history
   and locally stored decrypted alarm pictures (ADR-0018);
 - automatic encrypted-video detection with an optional private verification
-  code or the hash-validated cloud copy, plus a read-only encryption report;
+  code or the hash-validated cloud copy (requested only when needed, at most
+  once per camera per 24 hours), plus a local-only encryption report;
 - read-only microSD status (10-minute cache) and one-day SD record index
   (ADR-0019);
 - health metrics, rootless packaging and signed multi-architecture images.

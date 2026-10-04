@@ -37,7 +37,8 @@ impl DeviceSource for Device {
         &self,
         _: &CameraConfig,
     ) -> Result<Zeroizing<String>, BridgeError> {
-        Ok(Zeroizing::new("ABCDEF".into()))
+        // The device endpoints must never trigger an EZVIZ code email.
+        panic!("the cloud verification code must not be requested")
     }
 
     async fn storage_status(&self, _: &CameraConfig) -> Result<Value, BridgeError> {
@@ -109,10 +110,7 @@ async fn encryption_and_storage_follow_the_contract() {
         Some("no-store")
     );
     let body = json(response).await;
-    assert_eq!(
-        body,
-        json!({"video_encrypted": true, "key_source": "cloud"})
-    );
+    assert_eq!(body, json!({"video_encrypted": true, "key_source": "none"}));
     assert!(!body.to_string().contains("ABCDEF"));
     let storage = json(get(&system, "/v1/cameras/front/storage").await).await;
     assert_eq!(storage, json!({"status": "unformatted"}));

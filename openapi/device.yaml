@@ -6,9 +6,11 @@ encryption:
     description: >-
       video_encrypted is the cloud STATUS.isEncrypt flag (null when unknown).
       key_source is option when the configured private code matches the
-      camera's encryptPwd hash, cloud when the account's verification-code copy
-      matches it, otherwise none. Codes are never returned. Cached for 10
-      minutes (60 seconds after a failed lookup).
+      camera's encryptPwd hash, cloud only when a matching cloud code was
+      already fetched for an actual decryption in this process, otherwise
+      none. This endpoint never requests the cloud code, because that request
+      can make EZVIZ email or text the owner a verification code. Codes are
+      never returned. Cached for 10 minutes (60 seconds after a failure).
     security: [{bearerAuth: []}]
     parameters: [{$ref: "../openapi.yaml#/components/parameters/Camera"}]
     responses:

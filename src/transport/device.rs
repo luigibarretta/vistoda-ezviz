@@ -132,7 +132,7 @@ impl EzvizTransport {
         let keys = candidate_keys(self, camera, status.as_ref()).await;
         if keys.is_empty() {
             return Err(BridgeError::Configuration(
-                "encrypted camera has no usable verification code".into(),
+                "encrypted camera has no usable verification code: set verification_code (cloud lookup is limited to once per 24 hours)".into(),
             ));
         }
         let last = keys.len() - 1;
