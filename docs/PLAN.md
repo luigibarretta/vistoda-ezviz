@@ -4,7 +4,7 @@ This document records the release gates for Vistoda EZVIZ. The supported user
 surface is defined by the repository README, OpenAPI contract and Vistoda
 compatibility matrix.
 
-## Current 0.9.1 scope
+## Current 0.10.0 scope
 
 - private account enrollment and rotating session storage;
 - complete bounded camera inventory pagination;
@@ -22,6 +22,10 @@ compatibility matrix.
   once per camera per 24 hours), plus a local-only encryption report;
 - read-only microSD status (10-minute cache) and one-day SD record index
   (ADR-0019);
+- native camera controls (switches, per-camera defence, detection mode,
+  sensitivity, PTZ step) and the account defence mode over the bridge's own
+  EZVIZ session, with expected-value checks, read-back and one rollback, so
+  Home Assistant's separate `ezviz` login is no longer needed (ADR-0021);
 - health metrics, rootless packaging and signed multi-architecture images.
 
 Owned-camera evidence covered snapshot decoding, H.264/AAC media, concurrent

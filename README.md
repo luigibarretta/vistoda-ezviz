@@ -10,7 +10,8 @@ contract for existing images, health checks and automation. The product and
 canonical repository are Vistoda EZVIZ and `vistoda-ezviz`.
 
 The released scope is snapshots, compatible live streams, finite local
-recordings, alarms and a read-only microSD status and record index. It does not
+recordings, alarms, a read-only microSD status and record index, and native
+camera controls that replace Home Assistant's separate `ezviz` login. It does not
 provide voice talk or microSD playback, and encrypted-stream compatibility
 varies by model. Home Assistant OS users should
 start with the shared [setup guide](https://github.com/luigibarretta/vistoda-addons/blob/main/GETTING_STARTED.md).
@@ -39,6 +40,8 @@ modify camera firmware.
   code or the account's hash-validated cloud copy;
 - read-only microSD status and one-day SD record index (no playback, format or
   reboot);
+- verified camera controls (switches, defence, detection mode, sensitivity,
+  PTZ step) and the account defence mode, cached 60 s (ADR-0021);
 - finite media-typed MPEG-PS/MPEG-TS recordings with immutable manifests and
   SHA-256 digests;
 - server-paginated archive inventory, private spool metadata and on-demand
@@ -139,6 +142,9 @@ still installed:
 | `GET /v1/cameras/{camera}/encryption` | encryption state and key source | bearer |
 | `GET /v1/cameras/{camera}/storage` | microSD status (10-minute cache) | bearer |
 | `GET /v1/cameras/{camera}/sd-records?date=` | one-day SD record index | bearer |
+| `GET`/`PUT /v1/cameras/{camera}/controls` | cached controls; verified single change | bearer |
+| `POST /v1/cameras/{camera}/ptz` | one PTZ step | bearer |
+| `GET`/`PUT /v1/account/defence` | account defence mode | bearer |
 | `POST /v1/cameras/{camera}/recordings` | finite capture | bearer |
 | `GET /v1/recordings?page=&page_size=&camera=` | paginated inventory and private spool descriptor | bearer |
 | `GET /v1/recordings/{id}` | immutable recording manifest | bearer |
@@ -154,6 +160,9 @@ Alarms are polled read-only every 15 seconds (`EZVIZ_BRIDGE_ALARM_POLL_SECONDS`,
 `0` disables). Omit `after` for up to 50 recent alarms; pass the returned
 `next_sequence` as `after` with `wait` ≤ 25 to long-poll new ones. Reset the
 cursor when `generation` changes. See [ADR-0018](docs/adr/0018-alarm-event-feed.md).
+
+Control writes need `expected_value` (409 on a stale view), are verified by
+read-back and rolled back once on mismatch (502 `unconfirmed`); see ADR-0021.
 
 ## Production model
 

@@ -129,6 +129,17 @@ the file lifts the pause; prefer entering the label code instead. `GET …/stora
 read-only; storage is fetched from EZVIZ at most once per camera every 10
 minutes, so a freshly inserted card may take that long to appear.
 
+## Camera controls
+
+`GET /v1/cameras/{camera}/controls` and `GET /v1/account/defence` read cached
+EZVIZ data (60 s; 30 s after a failure) and never poll in the background.
+A `PUT` re-reads first: `409 conflict` means the setting changed elsewhere
+(reload and retry); `409 unsupported_control` means the camera does not report
+it. `502 unconfirmed` means the read-back disagreed and one rollback was sent;
+check the setting in the EZVIZ app before retrying. A sleeping battery camera
+can make writes fail with `502 upstream_failed`. No control route requests the
+cloud verification code (ADR-0021).
+
 ## SceneTrove
 
 SceneTrove uses the bounded live endpoint for interactive viewing and the

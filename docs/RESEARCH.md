@@ -157,3 +157,36 @@ day; `EZMediaPlayer.startPlayback(List<VideoStreamInfo>)` hands it to native
 "reach the end of playback. vtmkey=%s". The exact parameter set and order, the
 `seg` syntax, whether StreamInfo `0x13b` is reused, and the seek/continue/end
 control messages are unproven, so no playback code ships (ADR-0020).
+
+## Native controls (2026-10-05, ADR-0021)
+
+Sources: pyezvizapi 1.0.0.7 (pinned by Home Assistant core) `client.py`,
+`camera.py` and `constants.py`; Home Assistant core `ezviz` switch, button,
+number, select and alarm-panel platforms; the 7.6.1 app (`classes15.dex`
+`com.videogo.http.api.v3.DeviceApi`, `classes13.dex` `DeviceControlApi` and
+`PlayComponentApi`, `classes25.dex` `com.videogo.restful.VideoGoNetSDK`).
+None of the declarations below carries `validateCode`, an SMS code or a risk
+token; the ones that do (`addDevice`, `encryptkey/query/batch/risk`,
+`encryptedInfo/risk`) are not used.
+
+| Purpose | Request | App declaration |
+| --- | --- | --- |
+| Read state | `GET /v3/userdevices/v1/resources/pagelist?groupId=-1&filter=STATUS,SWITCH,TIME_PLAN,UPGRADE` | already used for status |
+| Switch | `PUT /v3/devices/{serial}/{channel}/{enable}/{type}/switchStatus` (HA sends channel 0) | `DeviceApi.switchStatus` |
+| Camera defence | `PUT /v3/devices/{serial}/{channel}/changeDefenceStatusReq` form `type=Global&status&actor=V`; `meta.code` 504 = camera timeout | `DeviceApi.changeDefenceStatus` |
+| Detection mode | `PUT /v3/devconfig/v1/keyValue/{serial}/1/op?key=Alarm_DetectHumanCar&value={"type":N}` (quotes encoded, braces literal) | `PlayComponentApi.configDeviceKeyValue` |
+| Sensitivity read | `POST /api/device/queryAlgorithmConfig` form `subSerial` → `algorithmConfig.algorithmList[{type,value,channel}]` | `VideoGoNetSDK.F` |
+| Sensitivity write | `POST /api/device/configAlgorithm` form `subSerial,type,channelNo,value` | `VideoGoNetSDK` (`configAlgorithm`) |
+| PTZ | `PUT /v3/devices/{serial}/ptzControl` form `command,action,channelNo,speed,uuid` | `DeviceApi.ptzControl` |
+| Group mode | `GET /v3/userdevices/v1/group/defenceMode?groupId=-1` → `mode` string | `DeviceApi.getDefenceMode` |
+| Set group mode | `POST /v3/userdevices/v1/group/switchDefenceMode` form `groupId=-1&mode` | `DeviceApi.switchDefenceMode` |
+
+Field mapping: `deviceInfos.status` 1 online; `STATUS.globalStatus` defence
+(hidden when `supportExt["1"]` is `0`); `TIME_PLAN` entry type 2 `enable` is
+the alarm schedule; `STATUS.optionals.Alarm_DetectHumanCar.type` 1/3/5;
+`powerRemaining` and `batteryCameraWorkMode` 0–4; `deviceInfos.version`;
+`UPGRADE.isNeedUpgrade == 3`; `supportExt["154"] == "1"` for PTZ and
+`supportExt["61"]` 1 or 3 for sensitivity type 0 or 3. Optionals and
+`supportExt` may be JSON serialized into strings. Read-back timing after a
+write and the exact sensitivity minimum are inferred, not observed on owned
+hardware.

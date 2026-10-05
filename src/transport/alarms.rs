@@ -20,7 +20,7 @@ const LIST_PATH: &str = "/v3/unifiedmsg/list/v2";
 /// Every alarm subtype, as used by the official app's alarm tab.
 const ALARM_STYPE: &str = "92";
 /// Server-side session expiry reported inside an HTTP 200 envelope.
-const SESSION_EXPIRED: i64 = 99_997;
+pub(super) const SESSION_EXPIRED: i64 = 99_997;
 const PAGE_LIMIT: &str = "20";
 
 impl EzvizTransport {

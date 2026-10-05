@@ -2,6 +2,8 @@ mod alarms;
 mod client;
 mod client_stream;
 mod cloud_key;
+mod control_http;
+mod controls;
 mod device;
 mod device_api;
 mod enroll;

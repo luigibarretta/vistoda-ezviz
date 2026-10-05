@@ -13,8 +13,8 @@ use serde_json::json;
 
 use crate::{
     VERSION, alarms::AlarmFeed, auth::ApiAuthenticator, config::BridgeConfig,
-    device::DeviceService, error::BridgeError, hub::RawStreamHub, metrics::Metrics,
-    recordings::RecordingManager, remux::MpegTsHub, snapshot::SnapshotService,
+    controls::ControlService, device::DeviceService, error::BridgeError, hub::RawStreamHub,
+    metrics::Metrics, recordings::RecordingManager, remux::MpegTsHub, snapshot::SnapshotService,
     storage::ensure_private_regular, transport::CameraTransport,
 };
 
@@ -32,6 +32,7 @@ pub struct Runtime {
     pub recordings: Arc<RecordingManager>,
     pub alarms: Arc<AlarmFeed>,
     pub devices: Arc<DeviceService>,
+    pub controls: Arc<ControlService>,
 }
 
 impl Runtime {
@@ -87,6 +88,7 @@ impl Runtime {
             metrics.clone(),
         );
         let devices = DeviceService::new(&config.cameras);
+        let controls = ControlService::new(&config.cameras);
         Ok(Arc::new(Self {
             config,
             auth,
@@ -97,6 +99,7 @@ impl Runtime {
             recordings,
             alarms,
             devices,
+            controls,
         }))
     }
 
@@ -123,6 +126,7 @@ pub fn router(runtime: Arc<Runtime>) -> Router {
         .merge(crate::api_recordings::routes())
         .merge(crate::api_alarms::routes())
         .merge(crate::api_device::routes())
+        .merge(crate::api_controls::routes())
         .layer(middleware::from_fn_with_state(
             Arc::clone(&runtime),
             authenticate,

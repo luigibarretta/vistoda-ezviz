@@ -1,0 +1,154 @@
+# Native camera controls referenced from ../openapi.yaml (ADR-0021).
+# Reads come from one cached account-wide EZVIZ resource list; writes happen
+# only on these explicit requests and are verified by reading back.
+controls:
+  get:
+    summary: Camera controls from cached EZVIZ data
+    description: >-
+      Built from one account-wide resource-list fetch (STATUS, SWITCH,
+      TIME_PLAN, UPGRADE) cached for 60 seconds (30 seconds after a failure),
+      plus a cached per-camera queryAlgorithmConfig read only for cameras whose
+      supportExt 61 is 1 or 3. Fields the camera does not report are null;
+      switches lists only known types the camera reports. Never requests the
+      cloud verification code.
+    security: [{bearerAuth: []}]
+    parameters: [{$ref: "../openapi.yaml#/components/parameters/Camera"}]
+    responses:
+      "200": {$ref: "#/components/responses/Controls"}
+      "404": {$ref: "../openapi.yaml#/components/responses/NotFound"}
+      "502": {$ref: "#/components/responses/ControlError"}
+      "503": {description: EZVIZ runtime is not connected}
+  put:
+    summary: Change one control with an expected-value check and read-back
+    description: >-
+      Re-reads the camera, answers 409 when the current value differs from
+      expected_value, sends one EZVIZ write, then re-reads up to three times
+      (after 1, 2 and 3 seconds). When a read-back still shows another value
+      the previous value is written back once and 502 unconfirmed is
+      returned. Writing the current value is a no-op. Writes are serialized
+      across the account.
+    security: [{bearerAuth: []}]
+    parameters: [{$ref: "../openapi.yaml#/components/parameters/Camera"}]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [key, value, expected_value]
+            properties:
+              key:
+                type: string
+                pattern: "^(defence_enabled|detection_mode|sensitivity|switch\\.[a-z_]+)$"
+                description: Switch names are listed in ADR-0021.
+              value: {type: [boolean, string, integer]}
+              expected_value: {type: [boolean, string, integer]}
+    responses:
+      "200": {$ref: "#/components/responses/Controls"}
+      "400": {$ref: "#/components/responses/ControlError"}
+      "404": {$ref: "../openapi.yaml#/components/responses/NotFound"}
+      "409": {description: "conflict (with current) or unsupported_control", content: {application/json: {schema: {$ref: "#/components/schemas/ControlError"}}}}
+      "502": {description: "unconfirmed or upstream_failed", content: {application/json: {schema: {$ref: "#/components/schemas/ControlError"}}}}
+      "503": {description: EZVIZ runtime is not connected}
+ptz:
+  post:
+    summary: One PTZ step (START then STOP at default speed 5)
+    security: [{bearerAuth: []}]
+    parameters: [{$ref: "../openapi.yaml#/components/parameters/Camera"}]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [direction]
+            properties: {direction: {type: string, enum: [up, down, left, right]}}
+    responses:
+      "204": {description: Step sent; STOP is retried once on failure}
+      "400": {$ref: "#/components/responses/ControlError"}
+      "404": {$ref: "../openapi.yaml#/components/responses/NotFound"}
+      "409": {description: Camera does not report supportExt 154 (PTZ)}
+      "502": {$ref: "#/components/responses/ControlError"}
+      "503": {description: EZVIZ runtime is not connected}
+accountDefence:
+  get:
+    summary: Account-level group defence mode (cached 60 seconds)
+    security: [{bearerAuth: []}]
+    responses:
+      "200": {$ref: "#/components/responses/Defence"}
+      "502": {$ref: "#/components/responses/ControlError"}
+      "503": {description: EZVIZ runtime is not connected}
+  put:
+    summary: Change the group defence mode with the same verification rules
+    security: [{bearerAuth: []}]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [mode, expected_mode]
+            properties:
+              mode: {type: string, enum: [home, away, sleep]}
+              expected_mode: {type: [string, "null"], enum: [home, away, sleep, null]}
+    responses:
+      "200": {$ref: "#/components/responses/Defence"}
+      "400": {$ref: "#/components/responses/ControlError"}
+      "409": {$ref: "#/components/responses/ControlError"}
+      "502": {$ref: "#/components/responses/ControlError"}
+      "503": {description: EZVIZ runtime is not connected}
+components:
+  responses:
+    Controls:
+      description: Current controls
+      headers: {Cache-Control: {schema: {type: string, const: no-store}}}
+      content: {application/json: {schema: {$ref: "#/components/schemas/Controls"}}}
+    Defence:
+      description: Account defence mode
+      headers: {Cache-Control: {schema: {type: string, const: no-store}}}
+      content: {application/json: {schema: {type: object, additionalProperties: false, required: [mode], properties: {mode: {type: [string, "null"], enum: [home, away, sleep, null]}}}}}
+    ControlError:
+      description: Control error
+      content: {application/json: {schema: {$ref: "#/components/schemas/ControlError"}}}
+  schemas:
+    ControlError:
+      type: object
+      required: [error]
+      properties:
+        error: {type: string, enum: [invalid_control, conflict, unsupported_control, unconfirmed, upstream_failed, camera_not_found, upstream_unavailable]}
+        detail: {type: string}
+        current: {type: [boolean, string, integer, "null"]}
+    Controls:
+      type: object
+      additionalProperties: false
+      required: [online, defence_enabled, alarm_schedule_enabled, detection_mode, sensitivity, switches, ptz, battery, firmware]
+      properties:
+        online: {type: [boolean, "null"]}
+        defence_enabled: {type: [boolean, "null"]}
+        alarm_schedule_enabled: {type: [boolean, "null"], description: Read-only}
+        detection_mode: {type: [string, "null"], enum: [human_shape, image_change, pir, null]}
+        sensitivity:
+          type: [object, "null"]
+          additionalProperties: false
+          required: [value, min, max]
+          properties: {value: {type: integer}, min: {type: integer}, max: {type: integer}}
+        switches:
+          type: object
+          propertyNames: {enum: [status_light, privacy, infrared_light, sleep, audio, motion_tracking, all_day_video_recording, auto_sleep, human_detection, flicker_light_on_movement, pir_motion_activated_light, tamper_alarm, wdr, distortion_correction, follow_movement, logo]}
+          additionalProperties: {type: boolean}
+        ptz: {type: boolean}
+        battery:
+          type: [object, "null"]
+          additionalProperties: false
+          required: [percent, work_mode]
+          properties:
+            percent: {type: [integer, "null"], minimum: 0, maximum: 100}
+            work_mode: {type: [string, "null"], enum: [power_saving, high_performance, plugged_in, super_power_saving, user_customization, null]}
+        firmware:
+          type: [object, "null"]
+          additionalProperties: false
+          required: [version, update_available]
+          properties: {version: {type: [string, "null"]}, update_available: {type: [boolean, "null"]}}

@@ -26,7 +26,7 @@ receive bridge or EZVIZ credentials.
 | Battery denial of service | One upstream per camera; idle grace; hard client-session lifetime; stream and snapshot rate limits; bounded recording duration |
 | Verification-code disclosure | Option codes written by jq to `0600` files, never in `cameras.json`, argv, logs or responses; cloud copies held in zeroizing memory and accepted only when they match `encryptPwd` |
 | Account risk-control alerts | The cloud code lookup, which can make EZVIZ email or text the owner, runs only for a needed decryption without an option code, at most once per camera per 24 hours (persisted); the encryption report never triggers it |
-| Unintended camera changes | Device endpoints are read-only; no format, reboot, encryption toggle or record deletion; storage lookups cached 10 minutes |
+| Unintended camera changes | Device endpoints are read-only; no format, reboot, encryption toggle or record deletion; storage lookups cached 10 minutes. Control writes (ADR-0021) only on explicit authenticated requests, allow-listed keys and switch types, expected-value check, serialized, bounded read-back and a single rollback; reads cached 60 seconds without background polling |
 | Alarm picture abuse | HTTPS-only plain GET of vendor-signed URLs, 4 MiB cap, timeout, JPEG-magic validation, 200 alarms and 256 MiB per installation; URLs never logged or stored |
 | Disk exhaustion | Recording quota, maximum duration, atomic files, bounded ACK tombstones and explicit retention owner |
 | Malformed cloud frames | Bounded chunk sizes, producer restart backoff and no unsafe parsing in the HTTP process |

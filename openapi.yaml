@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: EZVIZ VTM Bridge
-  version: 1.7.1
+  version: 1.8.0
   description: Internal bounded media contract for Home Assistant and SceneTrove.
 servers: [{url: http://ezviz-vtm-bridge:8765}]
 paths:
@@ -95,6 +95,9 @@ paths:
   /v1/cameras/{camera}/encryption: {$ref: "openapi/device.yaml#/encryption"}
   /v1/cameras/{camera}/storage: {$ref: "openapi/device.yaml#/storage"}
   /v1/cameras/{camera}/sd-records: {$ref: "openapi/device.yaml#/sdRecords"}
+  /v1/cameras/{camera}/controls: {$ref: "openapi/controls.yaml#/controls"}
+  /v1/cameras/{camera}/ptz: {$ref: "openapi/controls.yaml#/ptz"}
+  /v1/account/defence: {$ref: "openapi/controls.yaml#/accountDefence"}
   /v1/cameras/{camera}/recordings:
     post:
       security: [{bearerAuth: []}]
