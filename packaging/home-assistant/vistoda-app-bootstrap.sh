@@ -82,11 +82,14 @@ vistoda_start_child() {
     # Supervisor authority belongs only to this bootstrap, never the provider.
     (unset SUPERVISOR_TOKEN; exec "$@") &
     VISTODA_CHILD_PID=$!
+    VISTODA_CHILD_STATUS=
     trap 'vistoda_stop_child; exit 130' INT
-    trap 'vistoda_stop_child; exit 143' TERM
+    trap 'vistoda_stop_child; vistoda_exit_after_term' TERM
     trap 'vistoda_stop_child' EXIT
 }
 
+# Records the child's exit status in VISTODA_CHILD_STATUS (137 when it had to
+# be killed after the grace period).
 vistoda_stop_child() {
     if test -n "${VISTODA_CHILD_PID:-}"; then
         kill -TERM "${VISTODA_CHILD_PID}" 2>/dev/null || true
@@ -97,9 +100,21 @@ vistoda_stop_child() {
             vistoda_stop_attempt=$((vistoda_stop_attempt + 1))
         done
         kill -KILL "${VISTODA_CHILD_PID}" 2>/dev/null || true
-        wait "${VISTODA_CHILD_PID}" 2>/dev/null || true
+        VISTODA_CHILD_STATUS=0
+        wait "${VISTODA_CHILD_PID}" 2>/dev/null || VISTODA_CHILD_STATUS=$?
         VISTODA_CHILD_PID=
     fi
+}
+
+# TERM is Supervisor's normal stop request. A provider that then exits cleanly
+# (status 0, or 143 when it died on the forwarded TERM itself) ends the app
+# with 0, so Supervisor records it as stopped rather than failed. A provider
+# that fails during shutdown or has to be killed keeps its non-zero status.
+vistoda_exit_after_term() {
+    case "${VISTODA_CHILD_STATUS:-0}" in
+        0|143) exit 0 ;;
+        *) exit "${VISTODA_CHILD_STATUS}" ;;
+    esac
 }
 
 vistoda_wait_for_health() {

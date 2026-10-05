@@ -13,12 +13,12 @@ jobs:
         run: |
           git init .ci/vistoda-provider-kit
           git -C .ci/vistoda-provider-kit remote add origin https://github.com/luigibarretta/lib-vistoda-provider-kit.git
-          git -C .ci/vistoda-provider-kit fetch --depth=1 origin 4f6c74125a673cb9836471122ae0007938b86619
+          git -C .ci/vistoda-provider-kit fetch --depth=1 origin 46dfec1126eb7ab1067fea6dc9c98313b0842285
           git -C .ci/vistoda-provider-kit checkout --detach FETCH_HEAD
       - name: Verify pinned Vistoda provider kit
         run: |
           pin="$(tr -d '[:space:]' < dependencies/vistoda-provider-kit.sha)"
-          test "${pin}" = "4f6c74125a673cb9836471122ae0007938b86619"
+          test "${pin}" = "46dfec1126eb7ab1067fea6dc9c98313b0842285"
           test "$(git -C .ci/vistoda-provider-kit rev-parse HEAD)" = "${pin}"
           cmp .ci/vistoda-provider-kit/dist/vistoda-app-bootstrap.sh \
             packaging/home-assistant/vistoda-app-bootstrap.sh
