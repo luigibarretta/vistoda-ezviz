@@ -1,15 +1,12 @@
-//! One EZVIZ control request with a single session refresh.
+//! One EZVIZ control request; session expiry is handled by `authed`.
 //! Errors never carry URLs, serials, codes or session identifiers.
 
-use reqwest::{Method, StatusCode};
+use reqwest::Method;
 use serde_json::Value;
-use url::Url;
 
 use crate::{
     error::BridgeError,
-    transport::{
-        EzvizToken, EzvizTransport, alarms::SESSION_EXPIRED, client::success_code, http::meta_code,
-    },
+    transport::{EzvizToken, EzvizTransport, client::success_code, http::meta_code},
 };
 
 /// Request body variants used by the control endpoints.
@@ -31,48 +28,21 @@ impl EzvizTransport {
         query: Option<&str>,
         body: &Body<'_>,
     ) -> Result<Value, BridgeError> {
-        for attempt in 0..=1 {
-            let token = self.token.read().await.clone();
-            let mut url = Url::parse(&format!("https://{}{path}", token.api_url))
-                .map_err(|_| BridgeError::Upstream("EZVIZ API host is invalid".into()))?;
-            url.set_query(query);
-            let request = self.request(method.clone(), url.as_str(), &token);
-            let request = match body {
+        let target = query.map_or_else(|| path.to_owned(), |query| format!("{path}?{query}"));
+        let reply = self
+            .authed(method, &target, |request, token| match body {
                 Body::Empty => request,
                 Body::Form(fields) => request.form(fields),
-                Body::Legacy(fields) => request.form(&legacy_fields(&token, fields)),
-            };
-            let response = request
-                .send()
-                .await
-                .map_err(|error| BridgeError::Http(error.without_url()))?;
-            let status = response.status();
-            let value: Value = if status == StatusCode::UNAUTHORIZED {
-                Value::Null
-            } else {
-                response
-                    .json()
-                    .await
-                    .map_err(|error| BridgeError::Http(error.without_url()))?
-            };
-            let expired =
-                status == StatusCode::UNAUTHORIZED || meta_code(&value) == Some(SESSION_EXPIRED);
-            if expired && attempt == 0 {
-                self.refresh_session().await?;
-                continue;
-            }
-            if expired {
-                return Err(BridgeError::Authentication);
-            }
-            if !status.is_success() {
-                return Err(BridgeError::Upstream(format!(
-                    "EZVIZ control API returned HTTP {}",
-                    status.as_u16()
-                )));
-            }
-            return Ok(value);
+                Body::Legacy(fields) => request.form(&legacy_fields(token, fields)),
+            })
+            .await?;
+        if !reply.status.is_success() {
+            return Err(BridgeError::Upstream(format!(
+                "EZVIZ control API returned HTTP {}",
+                reply.status.as_u16()
+            )));
         }
-        Err(BridgeError::Authentication)
+        Ok(reply.value)
     }
 }
 

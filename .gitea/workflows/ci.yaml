@@ -13,12 +13,12 @@ jobs:
         run: |
           git init .ci/vistoda-provider-kit
           git -C .ci/vistoda-provider-kit remote add origin https://github.com/luigibarretta/lib-vistoda-provider-kit.git
-          git -C .ci/vistoda-provider-kit fetch --depth=1 origin 46dfec1126eb7ab1067fea6dc9c98313b0842285
+          git -C .ci/vistoda-provider-kit fetch --depth=1 origin c09837694fd8816bb0eb478b70553810891c0387
           git -C .ci/vistoda-provider-kit checkout --detach FETCH_HEAD
       - name: Verify pinned Vistoda provider kit
         run: |
           pin="$(tr -d '[:space:]' < dependencies/vistoda-provider-kit.sha)"
-          test "${pin}" = "46dfec1126eb7ab1067fea6dc9c98313b0842285"
+          test "${pin}" = "c09837694fd8816bb0eb478b70553810891c0387"
           test "$(git -C .ci/vistoda-provider-kit rev-parse HEAD)" = "${pin}"
           cmp .ci/vistoda-provider-kit/dist/vistoda-app-bootstrap.sh \
             packaging/home-assistant/vistoda-app-bootstrap.sh
@@ -32,7 +32,7 @@ jobs:
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - run: cargo test --locked --test loc_budget
       - run: cargo test --locked --all-targets
-      - run: cargo install cargo-audit --locked
+      - run: cargo install cargo-audit --version 0.22.2 --locked
       - run: cargo audit --deny warnings
       - name: Build standalone image at the declared version
         shell: bash
@@ -48,3 +48,23 @@ jobs:
           docker run --rm --network none --read-only --user 10001:10001
           ezviz-vtm-bridge:test --version
       - run: ./tests/smoke-remux.sh ezviz-vtm-bridge:test
+  secret-scan:
+    # Mirrors the GitHub secret-scan job. It runs the gitleaks binary directly so
+    # the scan does not depend on GitHub's API; version and checksum are pinned.
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install pinned gitleaks
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSLo "/tmp/${archive}" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  /tmp/${archive}" | sha256sum -c -
+          tar -xzf "/tmp/${archive}" -C /tmp gitleaks
+      - name: Scan the full history for secrets
+        run: /tmp/gitleaks git --redact --no-banner --exit-code 1 .

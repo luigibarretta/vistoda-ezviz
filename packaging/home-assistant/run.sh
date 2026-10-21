@@ -54,19 +54,15 @@ export EZVIZ_BRIDGE_DATA_DIR="${data_dir}"
 vistoda_start_child gosu bridge:bridge ezviz-vtm-bridge serve
 vistoda_wait_for_health http://127.0.0.1:8765/healthz 30 1
 
-app_hostname="$(vistoda_supervisor_app_info | jq -er '.data.hostname')"
-private_url="http://${app_hostname}:8765"
+# The kit adds url (http://HOSTNAME:8765) and managed_app: true to this config.
 jq -n \
-    --arg service media_bridge \
     --arg provider ezviz \
-    --arg url "${private_url}" \
     --arg alias "${camera_alias}" \
     --argjson aliases "$(jq -c 'keys' "${cameras_file}")" \
     --argjson devices "${camera_alias_json}" \
     --rawfile api_token "${token_file}" \
-    '{service: $service, config: {provider: $provider, url: $url,
-      alias: $alias, aliases: $aliases, devices: $devices,
-      api_token: ($api_token | gsub("\\s"; "")), managed_app: true}}' |
-    vistoda_publish_discovery
+    '{provider: $provider, alias: $alias, aliases: $aliases, devices: $devices,
+      api_token: ($api_token | gsub("\\s"; ""))}' |
+    vistoda_publish_app_discovery media_bridge 8765
 
 vistoda_wait_child

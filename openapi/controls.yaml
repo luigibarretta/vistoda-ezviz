@@ -10,11 +10,14 @@ controls:
       plus a cached per-camera queryAlgorithmConfig read only for cameras whose
       supportExt 61 is 1 or 3. Fields the camera does not report are null;
       switches lists only known types the camera reports. Never requests the
-      cloud verification code.
+      cloud verification code. One read ends within 15 seconds; when EZVIZ
+      fails or is late, the last good value up to 10 minutes old is returned
+      with stale true, otherwise 502. An expired session is 403, never stale.
     security: [{bearerAuth: []}]
     parameters: [{$ref: "../openapi.yaml#/components/parameters/Camera"}]
     responses:
       "200": {$ref: "#/components/responses/Controls"}
+      "403": {$ref: "#/components/responses/ControlError"}
       "404": {$ref: "../openapi.yaml#/components/responses/NotFound"}
       "502": {$ref: "#/components/responses/ControlError"}
       "503": {description: EZVIZ runtime is not connected}
@@ -26,7 +29,7 @@ controls:
       (after 1, 2 and 3 seconds). When a read-back still shows another value
       the previous value is written back once and 502 unconfirmed is
       returned. Writing the current value is a no-op. Writes are serialized
-      across the account.
+      across the account and never act on a stale value.
     security: [{bearerAuth: []}]
     parameters: [{$ref: "../openapi.yaml#/components/parameters/Camera"}]
     requestBody:
@@ -75,9 +78,11 @@ ptz:
 accountDefence:
   get:
     summary: Account-level group defence mode (cached 60 seconds)
+    description: Same 15-second deadline, stale fallback and 403 rule as the camera controls.
     security: [{bearerAuth: []}]
     responses:
       "200": {$ref: "#/components/responses/Defence"}
+      "403": {$ref: "#/components/responses/ControlError"}
       "502": {$ref: "#/components/responses/ControlError"}
       "503": {description: EZVIZ runtime is not connected}
   put:
@@ -109,23 +114,29 @@ components:
     Defence:
       description: Account defence mode
       headers: {Cache-Control: {schema: {type: string, const: no-store}}}
-      content: {application/json: {schema: {type: object, additionalProperties: false, required: [mode], properties: {mode: {type: [string, "null"], enum: [home, away, sleep, null]}}}}}
+      content: {application/json: {schema: {type: object, additionalProperties: false, required: [mode, stale], properties: {mode: {type: [string, "null"], enum: [home, away, sleep, null]}, stale: {$ref: "#/components/schemas/Stale"}}}}}
     ControlError:
       description: Control error
       content: {application/json: {schema: {$ref: "#/components/schemas/ControlError"}}}
   schemas:
+    Stale:
+      type: boolean
+      description: >-
+        true when EZVIZ failed or exceeded the 15-second read deadline and this
+        is the last good value, at most 10 minutes old. Added in API 1.9.0.
     ControlError:
       type: object
       required: [error]
       properties:
-        error: {type: string, enum: [invalid_control, conflict, unsupported_control, unconfirmed, upstream_failed, camera_not_found, upstream_unavailable]}
+        error: {type: string, enum: [invalid_control, conflict, unsupported_control, unconfirmed, upstream_failed, camera_not_found, upstream_unavailable, reauth_required]}
         detail: {type: string}
         current: {type: [boolean, string, integer, "null"]}
     Controls:
       type: object
       additionalProperties: false
-      required: [online, defence_enabled, alarm_schedule_enabled, detection_mode, sensitivity, switches, ptz, battery, firmware]
+      required: [online, defence_enabled, alarm_schedule_enabled, detection_mode, sensitivity, switches, ptz, battery, firmware, stale]
       properties:
+        stale: {$ref: "#/components/schemas/Stale"}
         online: {type: [boolean, "null"]}
         defence_enabled: {type: [boolean, "null"]}
         alarm_schedule_enabled: {type: [boolean, "null"], description: Read-only}

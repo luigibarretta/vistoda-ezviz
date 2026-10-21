@@ -103,6 +103,20 @@ impl CloudKeyGuard {
             .map_or(Ok(()), |path| atomic_write_json(path, &state.attempts))
     }
 
+    /// Forgets an attempt EZVIZ never processed and persists that.
+    fn release(&self, serial: &str) {
+        let mut state = self.state();
+        state.attempts.remove(&key_id(serial));
+        if let Some(path) = &self.path
+            && let Err(error) = atomic_write_json(path, &state.attempts)
+        {
+            tracing::warn!(
+                error_type = error.diagnostic_code(),
+                "cloud key latch not saved"
+            );
+        }
+    }
+
     /// Returns the cached code or performs at most one guarded lookup.
     pub async fn fetch<F, Fut>(
         &self,
@@ -124,6 +138,14 @@ impl CloudKeyGuard {
                 self.state().codes.insert(key_id(serial), code.clone());
                 Ok(code)
             }
+            Err(error) if never_processed(&error) => {
+                tracing::warn!(
+                    error_type = error.diagnostic_code(),
+                    "cloud verification code lookup did not reach EZVIZ; not paused"
+                );
+                self.release(serial);
+                Err(error)
+            }
             Err(error) => {
                 tracing::warn!(
                     error_type = error.diagnostic_code(),
@@ -132,6 +154,17 @@ impl CloudKeyGuard {
                 Err(error)
             }
         }
+    }
+}
+
+/// Failures that prove EZVIZ did not act on the lookup: the session was
+/// refused before processing, or the connection was never established.
+/// Anything else (an answer, a timeout after sending) keeps the latch.
+fn never_processed(error: &BridgeError) -> bool {
+    match error {
+        BridgeError::ReauthRequired | BridgeError::SessionExpired => true,
+        BridgeError::Http(error) => error.is_connect(),
+        _ => false,
     }
 }
 
@@ -205,3 +238,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }
+
+#[cfg(test)]
+#[path = "guard_release_tests.rs"]
+mod release_tests;

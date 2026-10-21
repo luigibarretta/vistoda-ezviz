@@ -40,6 +40,8 @@ impl DefenceMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct AccountDefence {
     pub mode: Option<DefenceMode>,
+    /// Served from the last good read after EZVIZ failed (at most `STALE_FOR` old).
+    pub stale: bool,
 }
 
 /// `PUT /v1/account/defence` request body.

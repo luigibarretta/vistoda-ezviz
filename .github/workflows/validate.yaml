@@ -21,7 +21,7 @@ jobs:
         run: |
           git init .ci/vistoda-provider-kit
           git -C .ci/vistoda-provider-kit remote add origin https://github.com/luigibarretta/lib-vistoda-provider-kit.git
-          git -C .ci/vistoda-provider-kit fetch --depth=1 origin 46dfec1126eb7ab1067fea6dc9c98313b0842285
+          git -C .ci/vistoda-provider-kit fetch --depth=1 origin c09837694fd8816bb0eb478b70553810891c0387
           git -C .ci/vistoda-provider-kit checkout --detach FETCH_HEAD
       - name: Verify exact bootstrap dependency and lifecycle
         run: |
@@ -51,8 +51,8 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - run: cargo fmt --check
-      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - run: cargo test --all-targets --all-features --locked
       # Keep the product MSRV checks above on Rust 1.88, but run cargo-audit
       # with a current toolchain because audit-check compiles its own CLI.

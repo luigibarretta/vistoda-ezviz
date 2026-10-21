@@ -140,6 +140,23 @@ check the setting in the EZVIZ app before retrying. A sleeping battery camera
 can make writes fail with `502 upstream_failed`. No control route requests the
 cloud verification code (ADR-0021).
 
+Reads end within 15 s. When EZVIZ fails or is late (for example the HTTP 500
+bursts of 2026-10-20), the last good value up to 10 minutes old is returned
+with `"stale": true`; `control_read_failures_total{read,category}` and
+`control_stale_reads_total{read}` count these.
+
+## EZVIZ session
+
+The bridge starts without contacting EZVIZ and refreshes the session in the
+background (retry 15 s doubling to 10 min); `/healthz` stays 200 and reports
+`ezviz_session`: `ok`, `degraded` (not yet confirmed or a transient refresh
+failure) or `reauth_required` (EZVIZ refused the refresh token). In the last
+state EZVIZ-backed routes answer 403 `reauth_required`, Home Assistant starts
+its re-authentication flow and the new enrollment is adopted without a
+restart. Watch `session_refreshes_total{result}`,
+`session_auth_failures_total` and `session_reauth_required`; a burst of
+`api_auth_failures_total` means a wrong bridge token, not an EZVIZ problem.
+
 ## SceneTrove
 
 SceneTrove uses the bounded live endpoint for interactive viewing and the

@@ -1,9 +1,14 @@
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use async_trait::async_trait;
-use reqwest::{Client, Method, StatusCode};
+use reqwest::{Client, Method};
 use serde_json::Value;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use super::cloud_key::CLOUD_KEY_STATE_FILE;
@@ -11,11 +16,14 @@ use crate::{
     config::CameraConfig,
     device::{CloudKeyGuard, DeviceStatus},
     error::BridgeError,
-    storage::{atomic_write_json, ensure_private_regular},
+    session_health::SessionHealth,
     transport::{
         CameraTransport, ChunkConsumer, EzvizToken,
-        http::{meta_code, mobile_headers, required_string},
-        image, timeout_duration,
+        authed::{download_presigned, media_client},
+        http::mobile_headers,
+        image,
+        session::SessionStore,
+        timeout_duration,
     },
     vtm::VtmSession,
 };
@@ -31,8 +39,11 @@ pub(super) type StatusCache = std::sync::Mutex<BTreeMap<String, Arc<Mutex<Option
 
 pub struct EzvizTransport {
     pub(super) client: Client,
-    pub(super) token: RwLock<EzvizToken>,
-    token_path: PathBuf,
+    /// Pre-signed media downloads; never carries session headers.
+    pub(super) media: Client,
+    pub(super) session: Arc<SessionStore>,
+    /// `https` in production; plain HTTP only for the in-process fake server.
+    pub(super) scheme: &'static str,
     pub(super) allocation_lock: Mutex<()>,
     pub(super) ffmpeg_path: PathBuf,
     pub(super) timeout_seconds: u64,
@@ -40,66 +51,87 @@ pub struct EzvizTransport {
     pub(super) cloud_keys: CloudKeyGuard,
 }
 
+/// First retry delay of the startup session check, doubled up to the maximum.
+const START_RETRY: Duration = Duration::from_secs(15);
+const START_RETRY_MAX: Duration = Duration::from_secs(10 * 60);
+/// Upper bound for one camera snapshot download.
+const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
+
 impl EzvizTransport {
-    pub async fn from_token_file(
+    /// Loads the stored session without contacting EZVIZ; see [`Self::start`].
+    pub fn load(
         path: PathBuf,
         timeout_seconds: u64,
         ffmpeg_path: PathBuf,
+        health: SessionHealth,
     ) -> Result<Self, BridgeError> {
-        let raw = ensure_private_regular(&path, 20)?;
-        let token: EzvizToken = serde_json::from_str(&raw)
-            .map_err(|_| BridgeError::Configuration("EZVIZ token file is invalid".into()))?;
-        token.validate()?;
-        let transport = Self {
+        let timeout = timeout_duration(timeout_seconds);
+        Ok(Self {
             client: Client::builder()
-                .timeout(timeout_duration(timeout_seconds))
+                .timeout(timeout)
                 .redirect(reqwest::redirect::Policy::limited(3))
                 .build()?,
-            token: RwLock::new(token),
-            token_path: path.clone(),
+            media: media_client(timeout)?,
+            // Persisted next to the session token, inside the private /data.
+            cloud_keys: CloudKeyGuard::load(path.with_file_name(CLOUD_KEY_STATE_FILE)),
+            session: Arc::new(SessionStore::load(path, health)?),
+            scheme: "https",
             timeout_seconds,
             allocation_lock: Mutex::new(()),
             ffmpeg_path,
             status_cache: std::sync::Mutex::new(BTreeMap::new()),
-            // Persisted next to the session token, inside the private /data.
-            cloud_keys: CloudKeyGuard::load(path.with_file_name(CLOUD_KEY_STATE_FILE)),
-        };
-        transport.refresh_session().await?;
-        transport.ensure_service_urls().await?;
-        Ok(transport)
+        })
     }
 
-    pub(super) async fn refresh_session(&self) -> Result<(), BridgeError> {
-        let current = self.token.read().await.clone();
-        let feature = current
-            .feature_code
-            .clone()
-            .ok_or_else(|| BridgeError::Configuration("EZVIZ token has no feature code".into()))?;
-        let url = format!("https://{}/v3/apigateway/login", current.api_url);
-        let response = self
-            .request(Method::PUT, &url, &current)
-            .form(&[
-                ("refreshSessionId", current.rf_session_id.as_str()),
-                ("featureCode", feature.as_str()),
-            ])
-            .send()
-            .await?;
-        let status = response.status();
-        let value: Value = response.json().await?;
-        if !status.is_success() || meta_code(&value) != Some(200) {
-            return Err(BridgeError::Authentication);
-        }
-        let session = value
-            .get("sessionInfo")
-            .ok_or_else(|| BridgeError::Upstream("refresh response omitted sessionInfo".into()))?;
-        let mut updated = current;
-        updated.session_id = required_string(session, "sessionId")?;
-        updated.rf_session_id = required_string(session, "refreshSessionId")?;
-        self.persist_token(updated).await
+    /// Refreshes the session and discovers service URLs in the background,
+    /// retrying transient failures with backoff. A refused session stops the
+    /// loop and is reported as `reauth_required`; the API stays up either way.
+    pub fn start(self: &Arc<Self>) -> tokio::task::JoinHandle<()> {
+        let transport = Arc::clone(self);
+        tokio::spawn(async move {
+            let mut delay = START_RETRY;
+            loop {
+                let (_, generation) = transport.session.current().await;
+                let result = match transport.refresh_session(generation).await {
+                    Ok(()) => transport.ensure_service_urls().await,
+                    Err(error) => Err(error),
+                };
+                match result {
+                    Ok(()) => return tracing::info!("EZVIZ session ready"),
+                    Err(BridgeError::ReauthRequired) => {
+                        return tracing::error!("EZVIZ refused the stored session; enroll again");
+                    }
+                    Err(error) => tracing::warn!(
+                        error_type = error.diagnostic_code(),
+                        retry_seconds = delay.as_secs(),
+                        "EZVIZ session start failed; serving degraded"
+                    ),
+                }
+                tokio::time::sleep(delay).await;
+                delay = (delay * 2).min(START_RETRY_MAX);
+            }
+        })
+    }
+
+    /// Takes over a token file written by a runtime re-enrollment.
+    pub async fn adopt_enrollment(&self, staged: &Path) -> Result<(), BridgeError> {
+        self.session.adopt(staged).await?;
+        self.ensure_service_urls().await
+    }
+
+    /// Single-flight refresh of the session seen at `generation`.
+    pub(super) async fn refresh_session(&self, generation: u64) -> Result<(), BridgeError> {
+        self.session
+            .refresh(&self.client, self.scheme, generation)
+            .await
+    }
+
+    pub(super) async fn token(&self) -> EzvizToken {
+        self.session.token().await
     }
 
     async fn ensure_service_urls(&self) -> Result<(), BridgeError> {
-        if self.token.read().await.service_urls.is_some() {
+        if self.token().await.service_urls.is_some() {
             return Ok(());
         }
         let value = self
@@ -109,15 +141,9 @@ impl EzvizTransport {
             .get("systemConfigInfo")
             .cloned()
             .ok_or_else(|| BridgeError::Upstream("system info omitted service URLs".into()))?;
-        let mut token = self.token.read().await.clone();
-        token.service_urls = Some(service_urls);
-        self.persist_token(token).await
-    }
-
-    async fn persist_token(&self, token: EzvizToken) -> Result<(), BridgeError> {
-        atomic_write_json(&self.token_path, &token)?;
-        *self.token.write().await = token;
-        Ok(())
+        self.session
+            .update(|token| token.service_urls = Some(service_urls))
+            .await
     }
 
     pub(super) async fn api_json(
@@ -126,28 +152,16 @@ impl EzvizTransport {
         path: &str,
         query: &[(&str, String)],
     ) -> Result<Value, BridgeError> {
-        for attempt in 0..=1 {
-            let token = self.token.read().await.clone();
-            let url = format!("https://{}{}", token.api_url, path);
-            let response = self
-                .request(method.clone(), &url, &token)
-                .query(query)
-                .send()
-                .await?;
-            if response.status() == StatusCode::UNAUTHORIZED && attempt == 0 {
-                self.refresh_session().await?;
-                continue;
-            }
-            let status = response.status();
-            let value: Value = response.json().await?;
-            if !status.is_success() {
-                return Err(BridgeError::Upstream(format!(
-                    "EZVIZ API returned HTTP {status}"
-                )));
-            }
-            return Ok(value);
+        let reply = self
+            .authed(method, path, |request, _| request.query(query))
+            .await?;
+        if !reply.status.is_success() {
+            return Err(BridgeError::Upstream(format!(
+                "EZVIZ API returned HTTP {}",
+                reply.status.as_u16()
+            )));
         }
-        Err(BridgeError::Authentication)
+        Ok(reply.value)
     }
 
     pub(super) fn request(
@@ -161,6 +175,12 @@ impl EzvizTransport {
             headers.insert("sessionid", value);
         }
         self.client.request(method, url).headers(headers)
+    }
+
+    #[cfg(test)]
+    pub(super) const fn over_plain_http(mut self) -> Self {
+        self.scheme = "http";
+        self
     }
 }
 
@@ -180,12 +200,8 @@ impl CameraTransport for EzvizTransport {
             .await?;
         let image_url = image::first_image_url(&capture)
             .ok_or_else(|| BridgeError::Upstream("capture response omitted image URL".into()))?;
-        let token = self.token.read().await.clone();
-        let response = self.request(Method::GET, &image_url, &token).send().await?;
-        if !response.status().is_success() {
-            return Err(BridgeError::Upstream("snapshot download failed".into()));
-        }
-        let bytes = response.bytes().await?.to_vec();
+        // Pre-signed URL: HTTPS only, no session headers, bounded body.
+        let bytes = download_presigned(&self.media, &image_url, MAX_SNAPSHOT_BYTES).await?;
         let clear = if bytes.windows(16).any(|part| part == b"hikencodepicture") {
             self.decrypt_snapshot(camera, &bytes).await?
         } else {

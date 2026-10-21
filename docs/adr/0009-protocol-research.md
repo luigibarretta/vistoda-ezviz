@@ -1,7 +1,7 @@
 # ADR-0009: Protocol research provenance and adopted safeguards
 
 - Status: Accepted
-- Date: 2026-08-13
+- Date: 2026-08-13 (amended 2026-10-21: pyEzvizApi is no longer a dependency)
 
 ## Context
 
@@ -19,8 +19,10 @@ oracles and independent evidence:
 - Bobsilvio `ezviz_hp7` at commit `a6c038a3`: VTM/VTDU bootstrap, bounded
   relays, account-protecting circuit breaker, output-stall watchdog, GOP cache
   and the observed HP7/CP7 AAC-in-PES mismatch;
-- RenierM26 `pyEzvizApi` at commit `c713642f`: the Apache-2.0 package used by
-  this bridge, including token reuse and VTM MPEG-PS/MPEG-TS helpers;
+- RenierM26 `pyEzvizApi` at commit `c713642f`: the Apache-2.0 package the
+  first, Python bridge used (replaced by the native Rust transport of ADR-0012;
+  it is no longer a runtime dependency), kept as a protocol oracle for token
+  reuse, endpoints and the VTM MPEG-PS/MPEG-TS helpers;
 - albrzmr `ezviz_hp7` at commit `b3dcd6e4`: a separate LAN CPD7 implementation
   showing one-upstream lifecycle, keyframe-aligned warm buffers and explicit
   failure diagnostics;
@@ -36,6 +38,8 @@ quirks apply to CP4 without capture evidence.
 
 ## Consequences
 
-No third-party code is copied or linked, so the bridge remains Apache-2.0. Research
+No code from the projects above is copied or linked, so the bridge remains
+Apache-2.0. The separate MIT-licensed cloud-cam-viewer adaptations of ADR-0017
+are preserved under `third_party/` (see `DISTRIBUTION.md`). Research
 commits and licenses are auditable in `docs/RESEARCH.md`. A new protocol path
 requires a fixture, negative tests, an ADR amendment and a live CP4 canary.

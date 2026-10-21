@@ -25,6 +25,7 @@ fn controls() -> Controls {
         ptz: false,
         battery: None,
         firmware: None,
+        stale: false,
     }
 }
 

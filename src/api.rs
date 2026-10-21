@@ -1,21 +1,26 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use axum::{
     Json, Router,
     body::Body,
-    extract::{Path, Request, State},
+    extract::{Path, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
-    middleware::{self, Next},
-    response::{IntoResponse, Response},
+    middleware,
+    response::Response,
     routing::get,
 };
 use serde_json::json;
 
 use crate::{
-    VERSION, alarms::AlarmFeed, auth::ApiAuthenticator, config::BridgeConfig,
-    controls::ControlService, device::DeviceService, error::BridgeError, hub::RawStreamHub,
-    metrics::Metrics, recordings::RecordingManager, remux::MpegTsHub, snapshot::SnapshotService,
-    storage::ensure_private_regular, transport::CameraTransport,
+    alarms::AlarmFeed, auth::ApiAuthenticator, config::BridgeConfig, controls::ControlService,
+    device::DeviceService, enrollment::EnrollmentManager, error::BridgeError, hub::RawStreamHub,
+    metrics::Metrics, recordings::RecordingManager, remux::MpegTsHub,
+    session_health::SessionHealth, snapshot::SnapshotService, storage::ensure_private_regular,
+    transport::CameraTransport,
 };
 
 #[path = "api_stream.rs"]
@@ -33,12 +38,24 @@ pub struct Runtime {
     pub alarms: Arc<AlarmFeed>,
     pub devices: Arc<DeviceService>,
     pub controls: Arc<ControlService>,
+    /// EZVIZ session state shared with the transport.
+    pub session: SessionHealth,
+    enrollment: OnceLock<EnrollmentManager>,
 }
 
 impl Runtime {
+    /// A runtime whose session is already known to work (tests and fakes).
     pub fn build(
         config: BridgeConfig,
         transport: Arc<dyn CameraTransport>,
+    ) -> Result<Arc<Self>, BridgeError> {
+        Self::build_with_session(config, transport, SessionHealth::healthy())
+    }
+
+    pub fn build_with_session(
+        config: BridgeConfig,
+        transport: Arc<dyn CameraTransport>,
+        session: SessionHealth,
     ) -> Result<Arc<Self>, BridgeError> {
         let token = ensure_private_regular(&config.api_token_file, 32)?;
         let auth = ApiAuthenticator::new(token)?;
@@ -88,7 +105,7 @@ impl Runtime {
             metrics.clone(),
         );
         let devices = DeviceService::new(&config.cameras);
-        let controls = ControlService::new(&config.cameras);
+        let controls = ControlService::new(&config.cameras, &metrics);
         Ok(Arc::new(Self {
             config,
             auth,
@@ -100,7 +117,20 @@ impl Runtime {
             alarms,
             devices,
             controls,
+            session,
+            enrollment: OnceLock::new(),
         }))
+    }
+
+    /// Enables runtime re-enrollment; later calls are ignored.
+    pub(crate) fn attach_enrollment(&self, manager: EnrollmentManager) {
+        let _ignored = self.enrollment.set(manager);
+    }
+
+    pub(crate) fn enrollment(&self) -> Result<&EnrollmentManager, BridgeError> {
+        self.enrollment
+            .get()
+            .ok_or(BridgeError::UpstreamUnavailable)
     }
 
     pub async fn close(&self) {
@@ -117,7 +147,7 @@ impl Runtime {
 
 pub fn router(runtime: Arc<Runtime>) -> Router {
     Router::new()
-        .route("/healthz", get(health))
+        .route("/healthz", get(crate::api_session::health))
         .route("/metrics", get(metrics))
         .route("/v1/cameras/{camera}/identity", get(camera_identity))
         .route("/v1/cameras/{camera}/snapshot.jpg", get(snapshot))
@@ -127,42 +157,19 @@ pub fn router(runtime: Arc<Runtime>) -> Router {
         .merge(crate::api_alarms::routes())
         .merge(crate::api_device::routes())
         .merge(crate::api_controls::routes())
+        .merge(crate::api_session::routes())
         .layer(middleware::from_fn_with_state(
             Arc::clone(&runtime),
-            authenticate,
+            crate::api_session::authenticate,
         ))
         .with_state(runtime)
-}
-
-async fn authenticate(
-    State(runtime): State<Arc<Runtime>>,
-    request: Request,
-    next: Next,
-) -> Response {
-    if request.uri().path() == "/healthz" || runtime.auth.accepts(request.headers()) {
-        return next.run(request).await;
-    }
-    let mut response = (
-        StatusCode::UNAUTHORIZED,
-        Json(json!({"error":"unauthorized"})),
-    )
-        .into_response();
-    response.headers_mut().insert(
-        header::WWW_AUTHENTICATE,
-        HeaderValue::from_static("Basic realm=\"ezviz-vtm-bridge\""),
-    );
-    response
-}
-
-async fn health() -> Json<serde_json::Value> {
-    Json(json!({"status":"ok", "version":VERSION}))
 }
 
 async fn metrics(State(runtime): State<Arc<Runtime>>) -> Response {
     response(
         StatusCode::OK,
         "text/plain; charset=utf-8",
-        runtime.metrics.render().await,
+        runtime.metrics.render().await + &runtime.session.render(),
     )
 }
 

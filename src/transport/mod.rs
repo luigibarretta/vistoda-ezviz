@@ -1,4 +1,5 @@
 mod alarms;
+mod authed;
 mod client;
 mod client_stream;
 mod cloud_key;
@@ -9,6 +10,12 @@ mod device_api;
 mod enroll;
 mod http;
 mod image;
+mod session;
+#[cfg(test)]
+mod session_fake_tests;
+mod session_outcome;
+#[cfg(test)]
+mod session_tests;
 mod token;
 mod video;
 mod video_pipeline;

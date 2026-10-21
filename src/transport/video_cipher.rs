@@ -116,7 +116,7 @@ impl NalDecryptor {
             }
         }
         if param_set && nal.len() >= header + 16 {
-            return Err(BridgeError::Authentication);
+            return Err(BridgeError::KeyRejected);
         }
         Ok(())
     }

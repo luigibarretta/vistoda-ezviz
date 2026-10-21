@@ -7,7 +7,6 @@
 
 use chrono::Utc;
 use reqwest::Method;
-use serde_json::Value;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -19,6 +18,7 @@ use crate::{
 
 /// Attempt times file, stored next to the session token under `/data`.
 pub(super) const CLOUD_KEY_STATE_FILE: &str = "cloud-key-attempts.json";
+const ENCRYPT_KEY_PATH: &str = "/api/device/query/encryptkey";
 
 impl EzvizTransport {
     /// Cached cloud code or one guarded lookup.
@@ -35,37 +35,33 @@ impl EzvizTransport {
         self.cloud_keys.cached(serial)
     }
 
-    /// The raw request; only `camera_key` may call it.
+    /// The raw request; only `camera_key` may call it. It shares the session
+    /// rules (refresh once on expiry) and the bounded body of every call.
     async fn request_camera_key(&self, serial: &str) -> Result<String, BridgeError> {
-        let token = self.token.read().await.clone();
-        let feature = token.feature_code.as_deref().unwrap_or_default();
-        let url = format!("https://{}/api/device/query/encryptkey", token.api_url);
-        let response = self
-            .request(Method::POST, &url, &token)
-            .form(&[
-                ("checkcode", ""),
-                ("serial", serial),
-                ("clientNo", "web_site"),
-                ("clientType", "3"),
-                ("netType", "WIFI"),
-                ("featureCode", feature),
-                ("sessionId", &token.session_id),
-            ])
-            .send()
-            .await
-            .map_err(|error| BridgeError::Http(error.without_url()))?;
-        let value: Value = response
-            .json()
-            .await
-            .map_err(|error| BridgeError::Http(error.without_url()))?;
+        let reply = self
+            .authed(Method::POST, ENCRYPT_KEY_PATH, |request, token| {
+                request.form(&[
+                    ("checkcode", ""),
+                    ("serial", serial),
+                    ("clientNo", "web_site"),
+                    ("clientType", "3"),
+                    ("netType", "WIFI"),
+                    (
+                        "featureCode",
+                        token.feature_code.as_deref().unwrap_or_default(),
+                    ),
+                    ("sessionId", token.session_id.as_str()),
+                ])
+            })
+            .await?;
         // Any non-zero result, including 120002 (verification code required),
         // is a failure that latches the 24-hour guard.
-        if !success_code(value.get("resultCode")) {
+        if !reply.status.is_success() || !success_code(reply.value.get("resultCode")) {
             return Err(BridgeError::Upstream(
                 "camera verification code request was refused".into(),
             ));
         }
-        required_string(&value, "encryptkey")
+        required_string(&reply.value, "encryptkey")
     }
 
     /// Decrypts an encrypted snapshot with the option code, else the guarded

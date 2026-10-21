@@ -42,19 +42,19 @@ fn assert_runtime_contract(root: &Path) {
     let runner = read(root, "packaging/home-assistant/run.sh");
     let bootstrap = read(root, "packaging/home-assistant/vistoda-app-bootstrap.sh");
     let camera_filter = read(root, "packaging/home-assistant/cameras.jq");
-    assert!(runner.contains("vistoda_supervisor_app_info"));
-    assert!(runner.contains("vistoda_publish_discovery"));
+    assert!(bootstrap.contains("vistoda_supervisor_app_info"));
+    assert!(runner.contains("vistoda_publish_app_discovery media_bridge 8765"));
     assert!(camera_filter.contains("cameras must contain 1 to 64 items"));
     assert!(camera_filter.contains("^[A-Za-z0-9_-]{1,64}$"));
     assert!(camera_filter.contains("aliases are not unique"));
     assert!(camera_filter.contains("camera sources are not unique"));
     assert!(runner.contains("mv -f \"${cameras_tmp_file}\" \"${cameras_file}\""));
     assert!(runner.contains("aliases: $aliases, devices: $devices"));
+    assert!(bootstrap.contains("managed_app: true"));
     assert!(runner.contains("source_id:"));
     assert!(bootstrap.contains("http://supervisor/discovery"));
     assert!(bootstrap.contains("http://supervisor/addons/self/info"));
     assert!(runner.contains("--rawfile api_token"));
-    assert!(runner.contains("managed_app: true"));
     assert!(runner.contains("vistoda_prepare_data_dir bridge:bridge \"${data_dir}\""));
     assert!(runner.contains("vistoda_secure_file bridge:bridge \"${data_dir}/token.json\""));
     assert!(camera_filter.contains("substream values are invalid"));
@@ -152,4 +152,64 @@ fn camera_renderer_maps_verification_codes_to_private_key_files() {
             String::from_utf8_lossy(&rejected.stderr).contains("verification codes are invalid")
         );
     }
+}
+
+/// Runs the discovery tail of run.sh with the vendored kit and pins the
+/// payload Home Assistant receives: keys and values match the 0.10 payload.
+#[test]
+fn supervisor_discovery_payload_is_unchanged() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let runner = read(&root, "packaging/home-assistant/run.sh");
+    let discovery = runner
+        .split_once("# The kit adds url")
+        .unwrap_or_else(|| panic!("discovery block"))
+        .1
+        .split("\nvistoda_wait_child")
+        .next()
+        .unwrap_or_else(|| panic!("discovery tail"));
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let cameras = directory.path().join("cameras.json");
+    fs::write(
+        &cameras,
+        r#"{"front":{"serial":"S1","channel":1},"rear":{"serial":"S2","channel":2}}"#,
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    let token = directory.path().join("api-token");
+    fs::write(&token, format!("{}\n", "a".repeat(64))).unwrap_or_else(|error| panic!("{error}"));
+    let script = format!(
+        ". \"$BOOTSTRAP\"\n\
+         vistoda_supervisor_app_info() {{ printf '{{\"data\":{{\"hostname\":\"fixture-ezviz\"}}}}'; }}\n\
+         vistoda_publish_discovery() {{ cat; }}\n#{discovery}"
+    );
+    let output = Command::new("sh")
+        .args(["-eu", "-c", &script])
+        .env(
+            "BOOTSTRAP",
+            root.join("packaging/home-assistant/vistoda-app-bootstrap.sh"),
+        )
+        .env("cameras_file", &cameras)
+        .env("token_file", &token)
+        .env("camera_alias", "front")
+        .env(
+            "camera_alias_json",
+            r#"[{"alias":"front","source_id":"S1:1"},{"alias":"rear","source_id":"S2:2"}]"#,
+        )
+        .output()
+        .unwrap_or_else(|error| panic!("sh: {error}"));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&output.stdout).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(
+        payload,
+        serde_json::json!({"service": "media_bridge", "config": {
+            "provider": "ezviz", "url": "http://fixture-ezviz:8765", "alias": "front",
+            "aliases": ["front", "rear"],
+            "devices": [{"alias": "front", "source_id": "S1:1"},
+                        {"alias": "rear", "source_id": "S2:2"}],
+            "api_token": "a".repeat(64), "managed_app": true}})
+    );
 }

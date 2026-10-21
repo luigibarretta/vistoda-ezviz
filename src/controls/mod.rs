@@ -39,6 +39,11 @@ use std::time::Duration;
 pub const CONTROLS_TTL: Duration = Duration::from_secs(60);
 /// Failed control reads are retried no sooner than this.
 pub const CONTROLS_FAILURE_TTL: Duration = Duration::from_secs(30);
+/// Overall bound of one control or defence read, below Home Assistant's 20 s
+/// client timeout: paging, a session refresh and a retry all fit inside it.
+pub const READ_DEADLINE: Duration = Duration::from_secs(15);
+/// How long the last good read may be served, marked `stale`, after failures.
+pub const STALE_FOR: Duration = Duration::from_secs(10 * 60);
 /// Freshness of the account-level defence mode.
 pub const DEFENCE_TTL: Duration = Duration::from_secs(60);
 /// Waits before each read-back after a write; bounded, no recursion.

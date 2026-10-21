@@ -10,7 +10,9 @@ use crate::{
     api::{Runtime, router},
     canary::{CanaryOptions, run as run_canary},
     config::BridgeConfig,
+    enrollment::EnrollmentManager,
     error::BridgeError,
+    session_health::SessionHealth,
     transport::{EzvizTransport, enroll},
 };
 
@@ -109,17 +111,25 @@ async fn serve_enrollment(address: &str, config: &BridgeConfig) -> Result<(), Br
     Ok(())
 }
 
+/// A failed session start does not stop the bridge: it serves degraded,
+/// retries in the background and reports `reauth_required` when EZVIZ
+/// refused the session, instead of crash-looping under the Supervisor.
 async fn serve_runtime(address: &str, config: BridgeConfig) -> Result<(), BridgeError> {
-    let transport = Arc::new(
-        EzvizTransport::from_token_file(
-            config.ezviz_token_file.clone(),
-            config.upstream_timeout_seconds,
-            config.ffmpeg_path.clone(),
-        )
-        .await?,
-    );
+    let session = SessionHealth::default();
+    let transport = Arc::new(EzvizTransport::load(
+        config.ezviz_token_file.clone(),
+        config.upstream_timeout_seconds,
+        config.ffmpeg_path.clone(),
+        session.clone(),
+    )?);
+    let _session_start = transport.start();
     let alarm_interval = std::time::Duration::from_secs(config.alarm_poll_seconds);
-    let runtime = Runtime::build(config, Arc::clone(&transport) as _)?;
+    let staged = config.ezviz_token_file.with_extension("enrolled.json");
+    let (ready, receiver) = tokio::sync::watch::channel(false);
+    let enrollment = EnrollmentManager::new(staged.clone(), config.upstream_timeout_seconds, ready);
+    let runtime = Runtime::build_with_session(config, Arc::clone(&transport) as _, session)?;
+    runtime.attach_enrollment(enrollment);
+    tokio::spawn(adopt_enrollments(Arc::clone(&transport), staged, receiver));
     runtime.devices.attach(Arc::clone(&transport) as _);
     runtime.controls.attach(Arc::clone(&transport) as _);
     runtime.alarms.spawn(transport, alarm_interval);
@@ -134,6 +144,26 @@ async fn serve_runtime(address: &str, config: BridgeConfig) -> Result<(), Bridge
         .await?;
     runtime.close().await;
     Ok(())
+}
+
+/// Switches the running transport to each token a runtime enrollment wrote.
+async fn adopt_enrollments(
+    transport: Arc<EzvizTransport>,
+    staged: PathBuf,
+    mut receiver: tokio::sync::watch::Receiver<bool>,
+) {
+    while receiver.changed().await.is_ok() {
+        if !*receiver.borrow_and_update() {
+            continue;
+        }
+        match transport.adopt_enrollment(&staged).await {
+            Ok(()) => tracing::info!("EZVIZ re-enrollment adopted"),
+            Err(error) => tracing::error!(
+                error_type = error.diagnostic_code(),
+                "EZVIZ re-enrollment could not be adopted"
+            ),
+        }
+    }
 }
 
 async fn enrollment_shutdown(mut receiver: tokio::sync::watch::Receiver<bool>) {

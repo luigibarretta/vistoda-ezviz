@@ -6,8 +6,18 @@ use thiserror::Error;
 pub enum BridgeError {
     #[error("configuration error: {0}")]
     Configuration(String),
-    #[error("authentication failed")]
-    Authentication,
+    /// The camera rejected every verification code (never a session error).
+    #[error("verification code was rejected by the camera")]
+    KeyRejected,
+    /// EZVIZ refused the session and its refresh: the account must be enrolled again.
+    #[error("EZVIZ session must be renewed")]
+    ReauthRequired,
+    /// One endpoint still refused a session that was just refreshed; the
+    /// request fails, but the account is not declared revoked.
+    #[error("EZVIZ refused a freshly refreshed session")]
+    SessionExpired,
+    #[error("upstream deadline exceeded")]
+    Timeout,
     #[error("vendor credentials were rejected")]
     InvalidCredentials,
     #[error("verification code was rejected")]
@@ -47,7 +57,10 @@ impl BridgeError {
     pub(crate) const fn diagnostic_code(&self) -> &'static str {
         match self {
             Self::Configuration(_) => "configuration",
-            Self::Authentication => "authentication",
+            Self::KeyRejected => "key_rejected",
+            Self::ReauthRequired => "reauth_required",
+            Self::SessionExpired => "session_expired",
+            Self::Timeout => "timeout",
             Self::InvalidCredentials => "invalid_credentials",
             Self::InvalidOtp => "invalid_otp",
             Self::EnrollmentBusy => "enrollment_busy",
@@ -74,7 +87,10 @@ impl BridgeError {
             | Self::Capacity(detail)
             | Self::Recording(detail)
             | Self::Upstream(detail) => detail,
-            Self::Authentication => "authentication failed",
+            Self::KeyRejected => "verification code rejected",
+            Self::ReauthRequired => "EZVIZ session must be renewed",
+            Self::SessionExpired => "EZVIZ refused a freshly refreshed session",
+            Self::Timeout => "upstream deadline exceeded",
             Self::InvalidCredentials => "vendor credentials were rejected",
             Self::InvalidOtp => "verification code was rejected",
             Self::EnrollmentBusy => "another enrollment is active",
@@ -94,7 +110,8 @@ impl BridgeError {
     #[must_use]
     pub fn public_response(&self) -> (StatusCode, Value) {
         match self {
-            Self::Authentication => (StatusCode::UNAUTHORIZED, json!({"error":"unauthorized"})),
+            // 401 is reserved for a bad bridge token; 403 asks for re-enrollment.
+            Self::ReauthRequired => (StatusCode::FORBIDDEN, json!({"error":"reauth_required"})),
             Self::InvalidCredentials => (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 json!({"error":"invalid_auth"}),
@@ -117,6 +134,9 @@ impl BridgeError {
                 json!({"error":"invalid_recording_request", "detail":detail}),
             ),
             Self::RecordingActive => (StatusCode::CONFLICT, json!({"error":"recording_active"})),
+            Self::SessionExpired | Self::Timeout => {
+                (StatusCode::BAD_GATEWAY, json!({"error":"upstream_failed"}))
+            }
             Self::UpstreamUnavailable => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 json!({"error":"upstream_unavailable"}),
@@ -131,7 +151,7 @@ impl BridgeError {
 
 impl IntoResponse for BridgeError {
     fn into_response(self) -> axum::response::Response {
-        if !matches!(self, Self::Authentication | Self::CameraNotFound) {
+        if !matches!(self, Self::ReauthRequired | Self::CameraNotFound) {
             tracing::error!(error_type = self.diagnostic_code(), "request failed");
         }
         let (status, value) = self.public_response();

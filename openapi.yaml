@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: EZVIZ VTM Bridge
-  version: 1.8.0
+  version: 1.9.0
   description: Internal bounded media contract for Home Assistant and SceneTrove.
 servers: [{url: http://ezviz-vtm-bridge:8765}]
 paths:
@@ -12,6 +12,10 @@ paths:
   /v1/enrollments:
     post:
       summary: Start one bounded EZVIZ account enrollment
+      description: >-
+        Served before the first enrollment and by the running bridge, where a
+        completed enrollment replaces the session (re-authentication after 403
+        reauth_required). api_region is a region code or an *.ezvizlife.com / *.ezvizru.com host.
       security: [{bearerAuth: []}]
       requestBody:
         required: true
@@ -209,6 +213,8 @@ components:
       properties:
         status: {type: string, const: ok}
         version: {type: string}
+        phase: {type: string, const: enrollment_required, description: Only before the first enrollment}
+        ezviz_session: {type: string, enum: [ok, degraded, reauth_required], description: "Running bridge only; reauth_required means enroll again"}
     Recording:
       type: object
       additionalProperties: false
@@ -235,4 +241,8 @@ components:
     Storage: {type: object, additionalProperties: false, required: [directory, scope, used_bytes, quota_bytes, available_bytes], properties: {directory: {type: string}, scope: {type: string, const: addon_private}, used_bytes: {type: integer, minimum: 0}, quota_bytes: {type: integer, minimum: 0}, available_bytes: {type: integer, minimum: 0}}}
   responses:
     NotFound: {description: Resource is absent or not ready}
+    # 401 is only a wrong bridge token. Every EZVIZ-backed /v1 route (all but
+    # /v1/recordings/* and /v1/enrollments*) answers this 403 while EZVIZ
+    # refuses the stored session and its refresh.
+    ReauthRequired: {description: "{\"error\":\"reauth_required\"}: EZVIZ session must be renewed by enrolling again"}
 security: [{bearerAuth: []}]

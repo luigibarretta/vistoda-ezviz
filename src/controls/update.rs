@@ -5,10 +5,11 @@
 //! rollback and an `unconfirmed` error.
 
 use serde_json::json;
+use tokio::time::Instant;
 
 use super::{
     AccountDefence, ControlError, ControlRequest, ControlService, ControlSource, Controls,
-    DefenceMode, DefenceUpdate, PtzAction, PtzRequest, VendorWrite,
+    DefenceMode, DefenceUpdate, PtzAction, PtzRequest, READ_DEADLINE, VendorWrite,
     cell::Cached,
     fields, parse_group_mode,
     service::{Confirmation, Refresh, confirm},
@@ -85,7 +86,8 @@ impl ControlService {
         let config = self.camera(alias)?;
         let source = self.source()?;
         let _guard = self.writes.lock().await;
-        let snapshot = self.snapshot(source.as_ref(), false).await?;
+        let deadline = Instant::now() + READ_DEADLINE;
+        let (snapshot, _) = self.snapshot(source.as_ref(), false, deadline).await?;
         let supported = snapshot
             .get(&config.serial)
             .is_some_and(|data| fields::ptz(&data.device));
@@ -112,20 +114,22 @@ impl ControlService {
     /// Cached account-level defence mode.
     pub async fn account_defence(&self) -> Result<AccountDefence, ControlError> {
         let source = self.source()?;
-        let mode = self.defence_mode(source.as_ref(), false).await?;
-        Ok(AccountDefence { mode })
+        self.defence_mode(source.as_ref(), false).await
     }
 
+    /// A forced read never answers with a stale value.
     async fn defence_mode(
         &self,
         source: &dyn ControlSource,
         force: bool,
-    ) -> Result<Option<DefenceMode>, ControlError> {
+    ) -> Result<AccountDefence, ControlError> {
         let fetch =
             move || async move { Ok(parse_group_mode(&source.group_defence_mode().await?)) };
-        match self.defence.get(force, fetch).await {
-            Cached::Value(mode) => Ok(mode),
-            Cached::Failed => Err(ControlError::Upstream),
+        let deadline = Instant::now() + READ_DEADLINE;
+        match self.defence.get(force, deadline, fetch).await {
+            Cached::Value(mode) => Ok(AccountDefence { mode, stale: false }),
+            Cached::Stale(mode) => Ok(AccountDefence { mode, stale: true }),
+            Cached::Failed(category) => Err(ControlError::failed(category)),
         }
     }
 
@@ -137,17 +141,18 @@ impl ControlService {
         let source = self.source()?;
         let source = source.as_ref();
         let _guard = self.writes.lock().await;
-        let previous = self.defence_mode(source, true).await?;
+        let before = self.defence_mode(source, true).await?;
+        let previous = before.mode;
         if previous != update.expected_mode {
             return Err(ControlError::Conflict(json!(previous)));
         }
         if previous == Some(update.mode) {
-            return Ok(AccountDefence { mode: previous });
+            return Ok(before);
         }
         self.send_mode(source, update.mode).await?;
         let read = move || self.defence_mode(source, true);
-        match confirm(read, |mode| *mode == Some(update.mode)).await {
-            Confirmation::Confirmed(mode) => Ok(AccountDefence { mode }),
+        match confirm(read, |read: &AccountDefence| read.mode == Some(update.mode)).await {
+            Confirmation::Confirmed(after) => Ok(after),
             outcome => {
                 if let (Confirmation::Mismatch, Some(mode)) = (outcome, previous) {
                     tracing::warn!("defence mode change was not confirmed; rolling back once");

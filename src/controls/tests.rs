@@ -116,7 +116,7 @@ fn unsupported_or_malformed_fields_degrade_to_null() {
         Some(json!({
             "online": null, "defence_enabled": null, "alarm_schedule_enabled": null,
             "detection_mode": null, "sensitivity": null, "switches": {}, "ptz": false,
-            "battery": null, "firmware": null
+            "battery": null, "firmware": null, "stale": false
         }))
     );
 }

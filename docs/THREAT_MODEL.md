@@ -31,7 +31,9 @@ receive bridge or EZVIZ credentials.
 | Disk exhaustion | Recording quota, maximum duration, atomic files, bounded ACK tombstones and explicit retention owner |
 | Malformed cloud frames | Bounded chunk sizes, producer restart backoff and no unsafe parsing in the HTTP process |
 | FFmpeg hangs | Fixed argv, no shell, process-group termination and bounded shutdown |
-| Token race/corruption | Atomic replace with fsync and strict file mode; one token owner process |
+| Token race/corruption | Atomic replace with fsync and strict file mode; one token owner process; one lock orders every refresh and token write, and the refresh runs detached so a cancelled request cannot lose a rotated token (ADR-0022) |
+| Credential exfiltration at enrollment | Region redirects capped at two; API domains must be plain `*.ezvizlife.com` or `*.ezvizru.com` hosts |
+| Session leakage to media hosts | Snapshot and alarm-picture URLs fetched over HTTPS only, without session headers, HTTPS-only redirects and size bounds |
 | SSRF/path traversal | Camera aliases from static config; no caller-controlled upstream URL or filesystem path |
 | Supply-chain compromise | Locked dependencies, CI audit, immutable image digest and no runtime package installation |
 

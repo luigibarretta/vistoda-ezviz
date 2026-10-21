@@ -6,7 +6,7 @@
 //! Errors never carry URLs, serials, codes or session identifiers.
 
 use async_trait::async_trait;
-use reqwest::{Method, StatusCode};
+use reqwest::Method;
 use serde_json::Value;
 use zeroize::Zeroizing;
 
@@ -39,38 +39,27 @@ impl DeviceSource for EzvizTransport {
     }
 
     async fn storage_status(&self, camera: &CameraConfig) -> Result<Value, BridgeError> {
-        for attempt in 0..=1 {
-            let token = self.token.read().await.clone();
-            let feature = token.feature_code.clone().unwrap_or_default();
-            let url = format!("https://{}{STORAGE_PATH}", token.api_url);
-            let response = self
-                .request(Method::POST, &url, &token)
-                .form(&[
+        let reply = self
+            .authed(Method::POST, STORAGE_PATH, |request, token| {
+                request.form(&[
                     ("subSerial", camera.serial.as_str()),
                     ("clientType", "3"),
                     ("netType", "WIFI"),
-                    ("featureCode", feature.as_str()),
+                    (
+                        "featureCode",
+                        token.feature_code.as_deref().unwrap_or_default(),
+                    ),
                     ("sessionId", token.session_id.as_str()),
                 ])
-                .send()
-                .await
-                .map_err(|error| BridgeError::Http(error.without_url()))?;
-            if response.status() == StatusCode::UNAUTHORIZED && attempt == 0 {
-                self.refresh_session().await?;
-                continue;
-            }
-            if !response.status().is_success() {
-                return Err(BridgeError::Upstream(format!(
-                    "EZVIZ storage API returned HTTP {}",
-                    response.status().as_u16()
-                )));
-            }
-            return response
-                .json()
-                .await
-                .map_err(|error| BridgeError::Http(error.without_url()));
+            })
+            .await?;
+        if !reply.status.is_success() {
+            return Err(BridgeError::Upstream(format!(
+                "EZVIZ storage API returned HTTP {}",
+                reply.status.as_u16()
+            )));
         }
-        Err(BridgeError::Authentication)
+        Ok(reply.value)
     }
 
     async fn record_page(

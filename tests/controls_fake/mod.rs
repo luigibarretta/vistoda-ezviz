@@ -24,6 +24,9 @@ use zeroize::Zeroizing;
 
 use crate::support::TestSystem;
 
+mod fault;
+pub use fault::Fault;
+
 pub const SERIAL: &str = "never-exposed";
 
 pub struct State {
@@ -42,6 +45,8 @@ pub struct State {
     pub pages: usize,
     pub algorithm_reads: usize,
     pub group_reads: usize,
+    /// Failure injected into the control and defence reads.
+    pub fault: Fault,
 }
 
 pub struct FakeControls {
@@ -66,6 +71,7 @@ impl FakeControls {
                 pages: 0,
                 algorithm_reads: 0,
                 group_reads: 0,
+                fault: Fault::None,
             }),
         })
     }
@@ -106,6 +112,7 @@ fn page(state: &State) -> Value {
 impl ControlSource for FakeControls {
     async fn control_page(&self, offset: usize, _: usize) -> Result<Value, BridgeError> {
         assert_eq!(offset, 0);
+        self.with(|state| state.fault).inject().await?;
         Ok(self.with(|state| {
             state.pages += 1;
             page(state)
@@ -122,6 +129,7 @@ impl ControlSource for FakeControls {
     }
 
     async fn group_defence_mode(&self) -> Result<Value, BridgeError> {
+        self.with(|state| state.fault).inject().await?;
         Ok(self.with(|state| {
             state.group_reads += 1;
             json!({"meta": {"code": 200}, "mode": state.group_mode.to_string()})

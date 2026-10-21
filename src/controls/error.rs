@@ -26,6 +26,8 @@ pub enum ControlError {
     Unconfirmed,
     /// 502: EZVIZ refused or failed the request.
     Upstream,
+    /// 403: EZVIZ refused the session; the account must be enrolled again.
+    ReauthRequired,
 }
 
 impl ControlError {
@@ -36,7 +38,17 @@ impl ControlError {
             error_type = error.diagnostic_code(),
             "EZVIZ control request failed"
         );
-        Self::Upstream
+        Self::failed(error.diagnostic_code())
+    }
+
+    /// Maps a failure category; an expired session is never a plain 502.
+    #[must_use]
+    pub fn failed(category: &str) -> Self {
+        if category == BridgeError::ReauthRequired.diagnostic_code() {
+            Self::ReauthRequired
+        } else {
+            Self::Upstream
+        }
     }
 
     #[must_use]
@@ -61,6 +73,7 @@ impl ControlError {
             ),
             Self::Unconfirmed => (StatusCode::BAD_GATEWAY, json!({"error": "unconfirmed"})),
             Self::Upstream => (StatusCode::BAD_GATEWAY, json!({"error": "upstream_failed"})),
+            Self::ReauthRequired => (StatusCode::FORBIDDEN, json!({"error": "reauth_required"})),
         }
     }
 }

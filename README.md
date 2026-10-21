@@ -132,7 +132,7 @@ still installed:
 
 | Endpoint | Purpose | Authentication |
 | --- | --- | --- |
-| `GET /healthz` | liveness and version | none |
+| `GET /healthz` | liveness, version and `ezviz_session` | none |
 | `GET /metrics` | low-cardinality metrics | bearer |
 | `GET /v1/cameras/{camera}/snapshot.jpg` | JPEG snapshot | bearer or Basic |
 | `GET /v1/cameras/{camera}/live.mpegps` | shared MPEG-PS; clear-media cameras only | bearer |
@@ -145,6 +145,7 @@ still installed:
 | `GET`/`PUT /v1/cameras/{camera}/controls` | cached controls; verified single change | bearer |
 | `POST /v1/cameras/{camera}/ptz` | one PTZ step | bearer |
 | `GET`/`PUT /v1/account/defence` | account defence mode | bearer |
+| `POST /v1/enrollments`, `POST`/`DELETE /v1/enrollments/{id}` | (re-)enroll the EZVIZ account | bearer |
 | `POST /v1/cameras/{camera}/recordings` | finite capture | bearer |
 | `GET /v1/recordings?page=&page_size=&camera=` | paginated inventory and private spool descriptor | bearer |
 | `GET /v1/recordings/{id}` | immutable recording manifest | bearer |
@@ -163,6 +164,8 @@ cursor when `generation` changes. See [ADR-0018](docs/adr/0018-alarm-event-feed.
 
 Control writes need `expected_value` (409 on a stale view), are verified by
 read-back and rolled back once on mismatch (502 `unconfirmed`); see ADR-0021.
+Reads end within 15 s and may return the last good value with `"stale": true`. 401 means
+only a wrong bridge token; a refused EZVIZ session is 403 `reauth_required` (ADR-0022).
 
 ## Production model
 
@@ -192,8 +195,7 @@ cargo audit --deny warnings
 docker build --tag ezviz-vtm-bridge:test .
 ```
 
-Tests are deterministic and require neither network nor EZVIZ credentials.
-Live canaries are separate and opt-in. CI enforces formatting, strict Clippy,
+Tests are deterministic and require neither network nor EZVIZ credentials. Live canaries are separate and opt-in. CI enforces formatting, strict Clippy,
 tests, RustSec audit, image build and a maximum of 250 physical lines for every
 maintained source, configuration and documentation file. Split a responsibility
 instead of adding a LOC exception. A repository test also rejects any future
@@ -214,9 +216,7 @@ rules, [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for trust boundaries and
 
 - [`docs/PLAN.md`](docs/PLAN.md): implementation and verified delivery state;
 - [`docs/RESEARCH.md`](docs/RESEARCH.md): protocol research and provenance;
-- [`docs/adr/README.md`](docs/adr/README.md): architecture decision records;
-- [`docs/adr/0016-vistoda-archive-boundaries.md`](docs/adr/0016-vistoda-archive-boundaries.md):
-  local archive, microSD and talk boundaries;
+- [`docs/adr/README.md`](docs/adr/README.md): architecture decision records (archive boundaries: ADR-0016);
 - [`deploy/`](deploy): sanitized Compose and camera examples.
 
 ## License and notices

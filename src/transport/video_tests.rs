@@ -89,7 +89,7 @@ fn wrong_key_fails_closed_without_emitting_ciphertext() {
     let vps = encrypted_hevc(32, &[&[0x0c][..], &[1; 31][..]].concat());
     assert!(matches!(
         video.feed(&rtp(&vps, 1)),
-        Err(BridgeError::Authentication)
+        Err(BridgeError::KeyRejected)
     ));
 }
 

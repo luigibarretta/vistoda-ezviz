@@ -21,3 +21,4 @@
 - [ADR-0019 — Read-only microSD index and video key resolution](0019-device-status-and-video-key.md)
 - [ADR-0020 — microSD playback over VTM (proposed)](0020-sd-playback-over-vtm.md)
 - [ADR-0021 — Native-free camera controls](0021-native-free-controls.md)
+- [ADR-0022 — EZVIZ session resilience and stale control reads](0022-session-resilience.md)

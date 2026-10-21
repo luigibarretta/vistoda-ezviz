@@ -149,13 +149,13 @@ impl EzvizTransport {
             )
             .await;
             match result {
-                Err(BridgeError::Authentication) if index < last && !cancel.is_cancelled() => {
+                Err(BridgeError::KeyRejected) if index < last && !cancel.is_cancelled() => {
                     tracing::warn!("verification code was rejected by the stream; trying next");
                 }
                 other => return other,
             }
         }
-        Err(BridgeError::Authentication)
+        Err(BridgeError::KeyRejected)
     }
 }
 

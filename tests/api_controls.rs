@@ -72,7 +72,8 @@ async fn controls_follow_the_contract_and_are_cached() {
             "switches": {"privacy": false, "sleep": true, "status_light": true},
             "ptz": true,
             "battery": {"percent": 64, "work_mode": "power_saving"},
-            "firmware": {"version": "V1.0", "update_available": false}
+            "firmware": {"version": "V1.0", "update_available": false},
+            "stale": false
         })
     );
     let text = body.to_string();
@@ -141,7 +142,7 @@ async fn ptz_is_refused_when_the_camera_lacks_it() {
 async fn account_defence_checks_the_expected_mode_and_reads_back() {
     let (system, fake, _) = attached();
     let read = json(call(&system, "GET", "/v1/account/defence", &Value::Null).await).await;
-    assert_eq!(read, json!({"mode": "away"}));
+    assert_eq!(read, json!({"mode": "away", "stale": false}));
     let stale = json!({"mode": "home", "expected_mode": "sleep"});
     let conflict = call(&system, "PUT", "/v1/account/defence", &stale).await;
     assert_eq!(conflict.status(), StatusCode::CONFLICT);
@@ -159,7 +160,7 @@ async fn account_defence_checks_the_expected_mode_and_reads_back() {
     let change = json!({"mode": "home", "expected_mode": "away"});
     let changed = call(&system, "PUT", "/v1/account/defence", &change).await;
     assert_eq!(changed.status(), StatusCode::OK);
-    assert_eq!(json(changed).await, json!({"mode": "home"}));
+    assert_eq!(json(changed).await, json!({"mode": "home", "stale": false}));
     assert_eq!(fake.with(|state| state.group_writes.clone()), [1]);
     fake.with(|state| state.sticky = true);
     let back = json!({"mode": "sleep", "expected_mode": "home"});

@@ -6,6 +6,7 @@ use crate::{
     config::CameraConfig,
     error::BridgeError,
     transport::{
+        authed::{http_error, read_json},
         client::{EzvizTransport, success_code},
         http::{find_resource, jwt_sign, required_string, value_u16},
     },
@@ -96,16 +97,18 @@ impl EzvizTransport {
     }
 
     async fn vtdu_token(&self) -> Result<String, BridgeError> {
-        let token = self.token.read().await.clone();
+        let token = self.token().await;
         let sign = jwt_sign(&token.session_id)?;
         let url = format!("{}/vtdutoken2", token.auth_address()?);
+        // The query carries the session id: errors must drop the URL.
         let response = self
             .request(Method::GET, &url, &token)
             .query(&[("ssid", &token.session_id), ("sign", &sign)])
             .send()
-            .await?;
+            .await
+            .map_err(http_error)?;
         let status = response.status();
-        let value: Value = response.json().await?;
+        let value = read_json(response, status.is_success()).await?;
         if !status.is_success() || !success_code(value.get("retcode")) {
             return Err(BridgeError::Upstream("VTDU token request failed".into()));
         }

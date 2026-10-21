@@ -71,6 +71,8 @@ pub struct Controls {
     pub ptz: bool,
     pub battery: Option<Battery>,
     pub firmware: Option<Firmware>,
+    /// Served from the last good read after EZVIZ failed (at most `STALE_FOR` old).
+    pub stale: bool,
 }
 
 /// Raw sections of one device. `Debug` is intentionally absent.
@@ -143,6 +145,7 @@ pub fn controls_from(data: &CameraData, sensitivity: Option<Sensitivity>) -> Con
         ptz: fields::ptz(&data.device),
         battery: fields::battery(&data.status),
         firmware: fields::firmware(&data.device, &data.upgrade),
+        stale: false,
     }
 }
 

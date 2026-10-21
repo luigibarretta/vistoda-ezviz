@@ -6,15 +6,16 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use tokio::sync::Mutex;
+use tokio::{sync::Mutex, time::Instant};
 
 use super::{
     CONTROLS_FAILURE_TTL, CONTROLS_TTL, CameraData, ControlError, ControlSource, Controls,
-    DEFENCE_TTL, DefenceMode, MAX_PAGES, PAGE_SIZE, Sensitivity, Snapshot, VERIFY_DELAYS,
+    DEFENCE_TTL, DefenceMode, MAX_PAGES, PAGE_SIZE, READ_DEADLINE, STALE_FOR, Sensitivity,
+    Snapshot, VERIFY_DELAYS,
     cell::{Cached, TtlCell},
     controls_from, merge_page, page_has_next, parse_sensitivity, sensitivity_kind,
 };
-use crate::{config::CameraConfig, error::BridgeError};
+use crate::{config::CameraConfig, error::BridgeError, metrics::Metrics};
 
 /// Which cached reads a control read must bypass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,15 +48,10 @@ pub struct ControlService {
 
 impl ControlService {
     #[must_use]
-    pub fn new(cameras: &BTreeMap<String, CameraConfig>) -> Arc<Self> {
+    pub fn new(cameras: &BTreeMap<String, CameraConfig>, metrics: &Metrics) -> Arc<Self> {
         let sensitivity = cameras
             .keys()
-            .map(|alias| {
-                (
-                    alias.clone(),
-                    TtlCell::new(CONTROLS_TTL, CONTROLS_FAILURE_TTL),
-                )
-            })
+            .map(|alias| (alias.clone(), cell("sensitivity", CONTROLS_TTL, metrics)))
             .collect();
         Arc::new(Self {
             cameras: cameras.clone(),
@@ -64,9 +60,9 @@ impl ControlService {
                 .map(|camera| camera.serial.clone())
                 .collect(),
             source: OnceLock::new(),
-            snapshot: TtlCell::new(CONTROLS_TTL, CONTROLS_FAILURE_TTL),
+            snapshot: cell("snapshot", CONTROLS_TTL, metrics),
             sensitivity,
-            defence: TtlCell::new(DEFENCE_TTL, CONTROLS_FAILURE_TTL),
+            defence: cell("defence", DEFENCE_TTL, metrics),
             writes: Mutex::new(()),
         })
     }
@@ -99,28 +95,38 @@ impl ControlService {
         config: &CameraConfig,
         refresh: Refresh,
     ) -> Result<Controls, ControlError> {
-        let snapshot = self.snapshot(source, refresh != Refresh::Cached).await?;
+        let deadline = Instant::now() + READ_DEADLINE;
+        let force = refresh != Refresh::Cached;
+        let (snapshot, mut stale) = self.snapshot(source, force, deadline).await?;
         let empty = CameraData::default();
         let data = snapshot.get(&config.serial).unwrap_or(&empty);
         let sensitivity = match sensitivity_kind(&data.device) {
             Some(kind) => {
-                self.sensitivity(source, alias, config, kind, refresh == Refresh::All)
-                    .await
+                let force = refresh == Refresh::All;
+                let read = self.sensitivity(source, alias, config, kind, force, deadline);
+                let (value, old) = read.await;
+                stale |= old;
+                value
             }
             None => None,
         };
-        Ok(controls_from(data, sensitivity))
+        let mut controls = controls_from(data, sensitivity);
+        controls.stale = stale;
+        Ok(controls)
     }
 
+    /// The account-wide snapshot and whether it is a stale fallback.
     pub(super) async fn snapshot(
         &self,
         source: &dyn ControlSource,
         force: bool,
-    ) -> Result<Arc<Snapshot>, ControlError> {
+        deadline: Instant,
+    ) -> Result<(Arc<Snapshot>, bool), ControlError> {
         let fetch = || fetch_snapshot(source, &self.serials);
-        match self.snapshot.get(force, fetch).await {
-            Cached::Value(snapshot) => Ok(snapshot),
-            Cached::Failed => Err(ControlError::Upstream),
+        match self.snapshot.get(force, deadline, fetch).await {
+            Cached::Value(snapshot) => Ok((snapshot, false)),
+            Cached::Stale(snapshot) => Ok((snapshot, true)),
+            Cached::Failed(category) => Err(ControlError::failed(category)),
         }
     }
 
@@ -132,15 +138,19 @@ impl ControlService {
         config: &CameraConfig,
         kind: u8,
         force: bool,
-    ) -> Option<Sensitivity> {
-        let cell = self.sensitivity.get(alias)?;
+        deadline: Instant,
+    ) -> (Option<Sensitivity>, bool) {
+        let Some(cell) = self.sensitivity.get(alias) else {
+            return (None, false);
+        };
         let fetch = move || async move {
             let raw = source.algorithm_config(config).await?;
             Ok(parse_sensitivity(&raw, kind, config.channel))
         };
-        match cell.get(force, fetch).await {
-            Cached::Value(value) => value,
-            Cached::Failed => None,
+        match cell.get(force, deadline, fetch).await {
+            Cached::Value(value) => (value, false),
+            Cached::Stale(value) => (value, true),
+            Cached::Failed(_) => (None, false),
         }
     }
 
@@ -152,6 +162,10 @@ impl ControlService {
             cell.invalidate().await;
         }
     }
+}
+
+fn cell<T: Clone>(name: &'static str, ttl: std::time::Duration, metrics: &Metrics) -> TtlCell<T> {
+    TtlCell::new(name, ttl, CONTROLS_FAILURE_TTL, STALE_FOR, metrics.clone())
 }
 
 /// Reads back up to `VERIFY_DELAYS.len()` times, waiting before each read.
