@@ -200,5 +200,6 @@ async fn fetch_snapshot(
         }
         offset = offset.saturating_add(PAGE_SIZE);
     }
+    super::power_probe::observe(&snapshot);
     Ok(Arc::new(snapshot))
 }

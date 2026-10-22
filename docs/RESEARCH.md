@@ -190,3 +190,17 @@ the alarm schedule; `STATUS.optionals.Alarm_DetectHumanCar.type` 1/3/5;
 `supportExt` may be JSON serialized into strings. Read-back timing after a
 write and the exact sensitivity minimum are inferred, not observed on owned
 hardware.
+
+## Power and charging state (open, 2026-10-23)
+
+Neither pyezvizapi (1.0.5.0 and `main`) nor this bridge parses a charging
+flag: only `STATUS.optionals.powerRemaining` and `batteryCameraWorkMode`
+(where 2, "plugged in", is a user-selected power profile, not a cable
+detection). A Home Assistant community request names a `powerStatus` field
+without its location or values. Release 0.12.0 adds an observation-only
+probe (`src/controls/power_probe.rs`): it logs once the key names of
+`deviceInfos`, `STATUS` and `STATUS.optionals`, and on every change the values
+of power-related keys only, from the snapshot already fetched for the
+controls. The charging entity will be designed from those observed values,
+recorded on the owned door viewer while charging and while unplugged.
+

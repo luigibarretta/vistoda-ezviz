@@ -13,6 +13,7 @@ mod error;
 mod fields;
 mod model;
 mod names;
+mod power_probe;
 mod service;
 mod source;
 #[cfg(test)]
