@@ -154,39 +154,48 @@ fn seen() -> &'static Mutex<Seen> {
     SEEN.get_or_init(Mutex::default)
 }
 
-/// Logs the key inventory once per device and power fields when they change.
+fn log_power(state: &mut Seen, serial: &str, device: &str, data: &CameraData) {
+    if state.inventory.insert(serial.to_owned()) {
+        for (scope, keys) in key_inventory(data) {
+            let names = keys.into_iter().collect::<Vec<_>>().join(",");
+            tracing::info!(%device, scope, keys = %names, "power probe: field names");
+        }
+    }
+    let fields = power_fields(data);
+    if state.fields.get(serial) != Some(&fields) {
+        let rendered = serde_json::to_string(&fields).unwrap_or_default();
+        tracing::info!(%device, fields = %rendered, "power probe: power fields changed");
+        state.fields.insert(serial.to_owned(), fields);
+    }
+}
+
+fn log_field_changes(state: &mut Seen, serial: &str, device: &str, data: &CameraData) {
+    let observed = observable_fields(data);
+    let rendered = match state.observed.get(serial) {
+        None => serde_json::to_string(&observed).unwrap_or_default(),
+        Some(previous) if previous != &observed => {
+            serde_json::to_string(&changes(previous, &observed)).unwrap_or_default()
+        }
+        Some(_) => return,
+    };
+    if state.observed.contains_key(serial) {
+        tracing::info!(%device, changes = %rendered, "field probe: fields changed");
+    } else {
+        tracing::info!(%device, fields = %rendered, "field probe: baseline");
+    }
+    state.observed.insert(serial.to_owned(), observed);
+}
+
+/// Logs the key inventory once per device, power fields and other observable
+/// fields when they change.
 pub fn observe(snapshot: &Snapshot) {
     let Ok(mut state) = seen().lock() else {
         return;
     };
     for (serial, data) in snapshot {
         let device = tail(serial);
-        if state.inventory.insert(serial.clone()) {
-            for (scope, keys) in key_inventory(data) {
-                let names = keys.into_iter().collect::<Vec<_>>().join(",");
-                tracing::info!(%device, scope, keys = %names, "power probe: field names");
-            }
-        }
-        let fields = power_fields(data);
-        if state.fields.get(serial) != Some(&fields) {
-            let rendered = serde_json::to_string(&fields).unwrap_or_default();
-            tracing::info!(%device, fields = %rendered, "power probe: power fields changed");
-            state.fields.insert(serial.clone(), fields);
-        }
-        let observed = observable_fields(data);
-        match state.observed.get(serial) {
-            None => {
-                let rendered = serde_json::to_string(&observed).unwrap_or_default();
-                tracing::info!(%device, fields = %rendered, "field probe: baseline");
-            }
-            Some(previous) if previous != &observed => {
-                let rendered =
-                    serde_json::to_string(&changes(previous, &observed)).unwrap_or_default();
-                tracing::info!(%device, changes = %rendered, "field probe: fields changed");
-            }
-            Some(_) => continue,
-        }
-        state.observed.insert(serial.clone(), observed);
+        log_power(&mut state, serial, &device, data);
+        log_field_changes(&mut state, serial, &device, data);
     }
 }
 
