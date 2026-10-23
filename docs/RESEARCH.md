@@ -219,3 +219,9 @@ mounted on battery and unplugged elsewhere both report 0 / 1. Release 0.13.1
 extends the probe to every non-secret, non-identifying, non-volatile scalar
 field (`field probe: baseline` once, then `field probe: fields changed` with
 `old -> new`), to find whether any cloud field reflects the door mount.
+
+Result (2026-10-23, 12:21-12:41 CEST): with the 0.13.1 field probe running,
+detaching and remounting the viewer on its door base several times changed no
+cloud field at all (`OnlineStatus` stayed 1, power 0 / 1). The door mount is
+not observable through the EZVIZ cloud API; Home Assistant can only show
+charging state, power source and battery level.
