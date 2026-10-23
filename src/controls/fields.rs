@@ -86,7 +86,11 @@ pub(super) fn ptz(device: &Value) -> bool {
     support_ext(device, "154").as_deref() == Some("1")
 }
 
-/// Battery level and work mode from `STATUS.optionals`.
+/// Battery level, work mode and power state from `STATUS.optionals`.
+///
+/// `powerStatus`/`powerType` were observed on an owned door viewer on
+/// 2026-10-23 (0.12.0 power probe): charging 2/0, unplugged 0/1, reported
+/// within about a minute of the change.
 pub(super) fn battery(status: &Value) -> Option<Battery> {
     let optionals = optionals(status);
     let percent = optionals
@@ -97,10 +101,34 @@ pub(super) fn battery(status: &Value) -> Option<Battery> {
         .get("batteryCameraWorkMode")
         .and_then(int)
         .and_then(work_mode);
-    (percent.is_some() || work_mode.is_some()).then_some(Battery { percent, work_mode })
+    let power_status = optionals.get("powerStatus").and_then(int);
+    let charging = power_status.and_then(|code| match code {
+        2 => Some(true),
+        0 => Some(false),
+        _ => None,
+    });
+    let power_source = optionals
+        .get("powerType")
+        .and_then(int)
+        .and_then(|code| match code {
+            0 => Some("external"),
+            1 => Some("battery"),
+            _ => None,
+        });
+    let any = percent.is_some()
+        || work_mode.is_some()
+        || power_status.is_some()
+        || power_source.is_some();
+    any.then_some(Battery {
+        percent,
+        work_mode,
+        charging,
+        power_source,
+        power_status,
+    })
 }
 
-/// Names of the pyezvizapi 1.0.0.7 `BatteryCameraWorkMode` values.
+/// Names of the pyezvizapi 1.0.5.0 `BatteryCameraWorkMode` values.
 const fn work_mode(code: i64) -> Option<&'static str> {
     match code {
         0 => Some("power_saving"),
@@ -108,6 +136,9 @@ const fn work_mode(code: i64) -> Option<&'static str> {
         2 => Some("plugged_in"),
         3 => Some("super_power_saving"),
         4 => Some("user_customization"),
+        // pyezvizapi names; it marks 5 itself as "not sure".
+        5 => Some("hibernate"),
+        7 => Some("always_on_video"),
         _ => None,
     }
 }

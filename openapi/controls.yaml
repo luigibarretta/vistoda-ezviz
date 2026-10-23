@@ -154,10 +154,13 @@ components:
         battery:
           type: [object, "null"]
           additionalProperties: false
-          required: [percent, work_mode]
+          required: [percent, work_mode, charging, power_source, power_status]
           properties:
             percent: {type: [integer, "null"], minimum: 0, maximum: 100}
-            work_mode: {type: [string, "null"], enum: [power_saving, high_performance, plugged_in, super_power_saving, user_customization, null]}
+            work_mode: {type: [string, "null"], enum: [power_saving, high_performance, plugged_in, super_power_saving, user_customization, hibernate, always_on_video, null]}
+            charging: {type: [boolean, "null"], description: "true while charging (vendor powerStatus 2), false when not (0), null for any other code"}
+            power_source: {type: [string, "null"], enum: [external, battery, null], description: "vendor powerType 0 external power, 1 battery"}
+            power_status: {type: [integer, "null"], description: "raw vendor powerStatus"}
         firmware:
           type: [object, "null"]
           additionalProperties: false

@@ -71,7 +71,8 @@ async fn controls_follow_the_contract_and_are_cached() {
             "sensitivity": {"value": 50, "min": 0, "max": 100},
             "switches": {"privacy": false, "sleep": true, "status_light": true},
             "ptz": true,
-            "battery": {"percent": 64, "work_mode": "power_saving"},
+            "battery": {"percent": 64, "work_mode": "power_saving", "charging": null,
+                        "power_source": null, "power_status": null},
             "firmware": {"version": "V1.0", "update_available": false},
             "stale": false
         })

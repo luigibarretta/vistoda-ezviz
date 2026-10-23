@@ -88,6 +88,7 @@ fn controls_follow_the_contract_for_a_full_camera() {
     let battery = controls.battery.unwrap_or_else(|| panic!("battery"));
     assert_eq!(battery.percent, Some(87));
     assert_eq!(battery.work_mode, Some("high_performance"));
+    assert_eq!((battery.charging, battery.power_source), (None, None));
     let firmware = controls.firmware.unwrap_or_else(|| panic!("firmware"));
     assert_eq!(firmware.version.as_deref(), Some("V5.3.8 build 240101"));
     assert_eq!(firmware.update_available, Some(true));
@@ -195,4 +196,30 @@ fn switch_names_are_unique_and_stable() {
         name.bytes()
             .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
     }));
+}
+
+/// Values observed on the owned door viewer on 2026-10-23 (0.12.0 probe),
+/// sent as strings inside JSON-encoded optionals.
+#[test]
+fn power_state_follows_the_observed_door_viewer_codes() {
+    let status = |power_status: &str, power_type: &str| {
+        let optionals = json!({"powerRemaining": "100", "batteryCameraWorkMode": "5",
+                               "powerStatus": power_status, "powerType": power_type});
+        json!({"optionals": optionals.to_string()})
+    };
+    let charging = super::fields::battery(&status("2", "0")).unwrap_or_else(|| panic!("battery"));
+    assert_eq!(charging.charging, Some(true));
+    assert_eq!(charging.power_source, Some("external"));
+    assert_eq!(charging.power_status, Some(2));
+    assert_eq!(charging.work_mode, Some("hibernate"));
+    let unplugged = super::fields::battery(&status("0", "1")).unwrap_or_else(|| panic!("battery"));
+    assert_eq!(
+        (unplugged.charging, unplugged.power_source),
+        (Some(false), Some("battery"))
+    );
+    let unknown = super::fields::battery(&status("1", "9")).unwrap_or_else(|| panic!("battery"));
+    assert_eq!(
+        (unknown.charging, unknown.power_source, unknown.power_status),
+        (None, None, Some(1))
+    );
 }

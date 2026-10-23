@@ -191,7 +191,7 @@ the alarm schedule; `STATUS.optionals.Alarm_DetectHumanCar.type` 1/3/5;
 write and the exact sensitivity minimum are inferred, not observed on owned
 hardware.
 
-## Power and charging state (open, 2026-10-23)
+## Power and charging state (resolved in 0.13.0, 2026-10-23)
 
 Neither pyezvizapi (1.0.5.0 and `main`) nor this bridge parses a charging
 flag: only `STATUS.optionals.powerRemaining` and `batteryCameraWorkMode`
@@ -203,4 +203,13 @@ probe (`src/controls/power_probe.rs`): it logs once the key names of
 of power-related keys only, from the snapshot already fetched for the
 controls. The charging entity will be designed from those observed values,
 recorded on the owned door viewer while charging and while unplugged.
+
+Observed with the 0.12.0 probe on the owned door viewer (serial tail 5538),
+`STATUS.optionals` values sent as strings: unplugged `powerStatus` 0 /
+`powerType` 1 (03:11 and 07:33 CEST), charging 2 / 0 (07:31), each change
+visible within about a minute; `powerRemaining` stayed 100 and
+`batteryCameraWorkMode` 5. 0.13.0 exposes `battery.charging` (2 true, 0 false,
+other codes null), `battery.power_source` (0 external, 1 battery) and the raw
+`battery.power_status`; work mode 5/7 use the pyezvizapi names (5 unconfirmed
+upstream). Still unobserved: the code while plugged with a full battery.
 
