@@ -8,6 +8,12 @@
 //! only. Keys that look secret are never logged; devices are identified by the
 //! last four serial characters. It reads the snapshot already fetched for the
 //! controls and makes no extra cloud call.
+//!
+//! Since 0.13.1 it also records which other fields change (for example when a
+//! door viewer is mounted on its door base), so a physical action can be
+//! correlated with a cloud field. Keys that look secret, identifying (address,
+//! network, name, location, account) or merely volatile (time, signal) are
+//! never logged.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Mutex, OnceLock};
@@ -20,6 +26,11 @@ const POWER_HINTS: [&str; 9] = [
     "power", "charg", "batt", "plug", "electr", "supply", "adapter", "solar", "cable",
 ];
 const SECRET_HINTS: [&str; 6] = ["pwd", "password", "key", "token", "secret", "code"];
+const PRIVATE_HINTS: [&str; 16] = [
+    "ip", "mac", "ssid", "serial", "name", "url", "addr", "lat", "lon", "locat", "mail", "phone",
+    "user", "account", "host", "domain",
+];
+const VOLATILE_HINTS: [&str; 6] = ["time", "stamp", "signal", "rssi", "uptime", "date"];
 
 fn is_secret(key: &str) -> bool {
     let lower = key.to_ascii_lowercase();
@@ -29,6 +40,13 @@ fn is_secret(key: &str) -> bool {
 fn is_power(key: &str) -> bool {
     let lower = key.to_ascii_lowercase();
     !is_secret(key) && POWER_HINTS.iter().any(|hint| lower.contains(hint))
+}
+
+fn is_observable(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    !is_secret(key)
+        && !PRIVATE_HINTS.iter().any(|hint| lower.contains(hint))
+        && !VOLATILE_HINTS.iter().any(|hint| lower.contains(hint))
 }
 
 /// `STATUS.optionals`, which EZVIZ may send as a JSON-encoded string.
@@ -69,6 +87,42 @@ pub fn power_fields(data: &CameraData) -> BTreeMap<String, Value> {
     fields
 }
 
+/// Every observable scalar value, keyed `scope.key`.
+#[must_use]
+pub fn observable_fields(data: &CameraData) -> BTreeMap<String, Value> {
+    let mut fields = BTreeMap::new();
+    for (scope, map) in scopes(data) {
+        for (key, value) in map {
+            // The raw `optionals` string is decomposed into its own scope;
+            // logging it whole would bypass the per-key filters.
+            let raw_optionals = scope == "STATUS" && key == "optionals";
+            if !raw_optionals && is_observable(&key) && !value.is_object() && !value.is_array() {
+                fields.insert(format!("{scope}.{key}"), value);
+            }
+        }
+    }
+    fields
+}
+
+/// `key: old -> new` for every changed, added or removed field.
+#[must_use]
+pub fn changes(
+    before: &BTreeMap<String, Value>,
+    after: &BTreeMap<String, Value>,
+) -> BTreeMap<String, String> {
+    let missing = Value::Null;
+    before
+        .keys()
+        .chain(after.keys())
+        .filter(|key| before.get(*key) != after.get(*key))
+        .map(|key| {
+            let old = before.get(key).unwrap_or(&missing);
+            let new = after.get(key).unwrap_or(&missing);
+            (key.clone(), format!("{old} -> {new}"))
+        })
+        .collect()
+}
+
 /// Non-secret key names per scope (values are never included).
 #[must_use]
 pub fn key_inventory(data: &CameraData) -> BTreeMap<&'static str, BTreeSet<String>> {
@@ -92,6 +146,7 @@ fn tail(serial: &str) -> String {
 struct Seen {
     inventory: BTreeSet<String>,
     fields: HashMap<String, BTreeMap<String, Value>>,
+    observed: HashMap<String, BTreeMap<String, Value>>,
 }
 
 fn seen() -> &'static Mutex<Seen> {
@@ -118,63 +173,23 @@ pub fn observe(snapshot: &Snapshot) {
             tracing::info!(%device, fields = %rendered, "power probe: power fields changed");
             state.fields.insert(serial.clone(), fields);
         }
+        let observed = observable_fields(data);
+        match state.observed.get(serial) {
+            None => {
+                let rendered = serde_json::to_string(&observed).unwrap_or_default();
+                tracing::info!(%device, fields = %rendered, "field probe: baseline");
+            }
+            Some(previous) if previous != &observed => {
+                let rendered =
+                    serde_json::to_string(&changes(previous, &observed)).unwrap_or_default();
+                tracing::info!(%device, changes = %rendered, "field probe: fields changed");
+            }
+            Some(_) => continue,
+        }
+        state.observed.insert(serial.clone(), observed);
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::*;
-
-    fn data(device: Value, status: Value) -> CameraData {
-        CameraData {
-            device,
-            status,
-            ..CameraData::default()
-        }
-    }
-
-    #[test]
-    fn finds_power_fields_in_every_scope_and_json_string_optionals() {
-        let camera = data(
-            json!({"deviceSerial": "BA2595538", "powerStatus": 1, "status": 1}),
-            json!({"globalStatus": 0, "optionals": "{\"powerRemaining\": 100, \"chargingState\": 2}"}),
-        );
-        let fields = power_fields(&camera);
-        assert_eq!(fields.get("deviceInfos.powerStatus"), Some(&json!(1)));
-        assert_eq!(
-            fields.get("STATUS.optionals.powerRemaining"),
-            Some(&json!(100))
-        );
-        assert_eq!(
-            fields.get("STATUS.optionals.chargingState"),
-            Some(&json!(2))
-        );
-        assert!(!fields.contains_key("deviceInfos.status"));
-    }
-
-    #[test]
-    fn never_reports_secret_looking_keys() {
-        let camera = data(
-            json!({"powerKey": "s3cr3t", "batteryToken": "t", "deviceSerial": "X"}),
-            json!({"encryptPwd": "x", "optionals": {"chargeCode": "9", "powerRemaining": 50}}),
-        );
-        let fields = power_fields(&camera);
-        assert_eq!(fields.len(), 1, "{fields:?}");
-        let names: Vec<String> = key_inventory(&camera).into_values().flatten().collect();
-        assert!(
-            names.iter().all(|name| !name.contains("Key")
-                && !name.contains("Token")
-                && !name.contains("Pwd")
-                && !name.contains("Code")),
-            "{names:?}"
-        );
-    }
-
-    #[test]
-    fn identifies_devices_by_serial_tail_only() {
-        assert_eq!(tail("BA2595538"), "5538");
-        assert_eq!(tail("AB"), "AB");
-    }
-}
+#[path = "power_probe_tests.rs"]
+mod tests;

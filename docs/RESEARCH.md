@@ -213,3 +213,9 @@ other codes null), `battery.power_source` (0 external, 1 battery) and the raw
 `battery.power_status`; work mode 5/7 use the pyezvizapi names (5 unconfirmed
 upstream). Still unobserved: the code while plugged with a full battery.
 
+
+Mounting the viewer on its door base (10:11 CEST) changed no power field:
+mounted on battery and unplugged elsewhere both report 0 / 1. Release 0.13.1
+extends the probe to every non-secret, non-identifying, non-volatile scalar
+field (`field probe: baseline` once, then `field probe: fields changed` with
+`old -> new`), to find whether any cloud field reflects the door mount.
