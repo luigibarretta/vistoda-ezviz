@@ -203,7 +203,7 @@ async fn with_pictures(
 async fn report(feed: &AlarmFeed, aliases: Option<&[String]>, error: &BridgeError) {
     tracing::warn!(
         error_type = error.diagnostic_code(),
-        detail = error.diagnostic_detail(),
+        detail = %error.logged_detail(),
         "alarm poll failed"
     );
     let all: Vec<String> = feed.cameras.keys().cloned().collect();

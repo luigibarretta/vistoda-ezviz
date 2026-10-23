@@ -9,7 +9,7 @@ use crate::{
     controls::ControlSource,
     error::BridgeError,
     session_health::SessionState,
-    transport::authed::{download_presigned, read_limited},
+    transport::{authed::read_limited, media::download_presigned},
 };
 
 #[tokio::test]

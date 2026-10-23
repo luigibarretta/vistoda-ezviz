@@ -2,6 +2,27 @@ use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde_json::{Value, json};
 use thiserror::Error;
 
+/// Upper bound, in bytes, of an error detail written to the log.
+pub(crate) const MAX_LOGGED_DETAIL: usize = 160;
+
+#[must_use]
+pub(crate) fn redact_detail(detail: &str) -> String {
+    let mut text = detail
+        .split_whitespace()
+        .map(|word| if word.contains("://") { "[url]" } else { word })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if text.len() > MAX_LOGGED_DETAIL {
+        let mut end = MAX_LOGGED_DETAIL;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text.truncate(end);
+        text.push_str("...");
+    }
+    text
+}
+
 #[derive(Debug, Error)]
 pub enum BridgeError {
     #[error("configuration error: {0}")]
@@ -101,10 +122,23 @@ impl BridgeError {
             Self::RecordingActive => "recording active",
             Self::UpstreamUnavailable => "upstream media unavailable",
             Self::Io(_) => "I/O failure",
+            Self::Http(error) if error.is_timeout() => "HTTP timeout",
+            Self::Http(error) if error.is_connect() => "HTTP connection failure",
+            Self::Http(error) if error.is_redirect() => "HTTP redirect failure",
+            Self::Http(error) if error.is_body() || error.is_decode() => "HTTP body failure",
             Self::Http(_) => "HTTP transport failure",
             Self::Json(_) => "JSON decoding failure",
             Self::Task(_) => "task failure",
         }
+    }
+
+    /// [`Self::diagnostic_detail`] made safe for logs. Every detail is built
+    /// from static text, HTTP statuses and vendor result codes; as a defence
+    /// in depth any word containing `://` (a URL, possibly pre-signed) is
+    /// replaced and the text is capped at [`MAX_LOGGED_DETAIL`] bytes.
+    #[must_use]
+    pub(crate) fn logged_detail(&self) -> String {
+        redact_detail(self.diagnostic_detail())
     }
 
     #[must_use]
@@ -152,9 +186,35 @@ impl BridgeError {
 impl IntoResponse for BridgeError {
     fn into_response(self) -> axum::response::Response {
         if !matches!(self, Self::ReauthRequired | Self::CameraNotFound) {
-            tracing::error!(error_type = self.diagnostic_code(), "request failed");
+            tracing::error!(
+                error_type = self.diagnostic_code(),
+                detail = %self.logged_detail(),
+                "request failed"
+            );
         }
         let (status, value) = self.public_response();
         (status, Json(value)).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BridgeError, MAX_LOGGED_DETAIL};
+
+    #[test]
+    fn logged_details_redact_urls_and_are_capped() {
+        let error = BridgeError::Upstream(
+            "media failed at https://img.ezvizlife.com/p.jpg?Signature=secret now".into(),
+        );
+        assert_eq!(error.logged_detail(), "media failed at [url] now");
+        let long = BridgeError::Upstream(format!("{}é", "x".repeat(MAX_LOGGED_DETAIL - 1)));
+        let logged = long.logged_detail();
+        assert!(logged.ends_with("...") && logged.len() <= MAX_LOGGED_DETAIL + 3);
+        let plain = BridgeError::Upstream("EZVIZ API returned HTTP 502".into());
+        assert_eq!(plain.logged_detail(), "EZVIZ API returned HTTP 502");
+        assert_eq!(
+            BridgeError::Timeout.logged_detail(),
+            "upstream deadline exceeded"
+        );
     }
 }

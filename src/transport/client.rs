@@ -19,9 +19,9 @@ use crate::{
     session_health::SessionHealth,
     transport::{
         CameraTransport, ChunkConsumer, EzvizToken,
-        authed::{download_presigned, media_client},
         http::mobile_headers,
         image,
+        media::{download_presigned, media_client},
         session::SessionStore,
         timeout_duration,
     },
@@ -200,7 +200,8 @@ impl CameraTransport for EzvizTransport {
             .await?;
         let image_url = image::first_image_url(&capture)
             .ok_or_else(|| BridgeError::Upstream("capture response omitted image URL".into()))?;
-        // Pre-signed URL: HTTPS only, no session headers, bounded body.
+        // Pre-signed URL: HTTPS (or HTTP on EZVIZ hosts), no session headers,
+        // bounded body; see `media.rs`.
         let bytes = download_presigned(&self.media, &image_url, MAX_SNAPSHOT_BYTES).await?;
         let clear = if bytes.windows(16).any(|part| part == b"hikencodepicture") {
             self.decrypt_snapshot(camera, &bytes).await?

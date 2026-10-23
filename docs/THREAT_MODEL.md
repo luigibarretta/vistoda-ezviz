@@ -27,13 +27,13 @@ receive bridge or EZVIZ credentials.
 | Verification-code disclosure | Option codes written by jq to `0600` files, never in `cameras.json`, argv, logs or responses; cloud copies held in zeroizing memory and accepted only when they match `encryptPwd` |
 | Account risk-control alerts | The cloud code lookup, which can make EZVIZ email or text the owner, runs only for a needed decryption without an option code, at most once per camera per 24 hours (persisted); the encryption report never triggers it |
 | Unintended camera changes | Device endpoints are read-only; no format, reboot, encryption toggle or record deletion; storage lookups cached 10 minutes. Control writes (ADR-0021) only on explicit authenticated requests, allow-listed keys and switch types, expected-value check, serialized, bounded read-back and a single rollback; reads cached 60 seconds without background polling |
-| Alarm picture abuse | HTTPS-only plain GET of vendor-signed URLs, 4 MiB cap, timeout, JPEG-magic validation, 200 alarms and 256 MiB per installation; URLs never logged or stored |
+| Alarm picture abuse | Plain GET of vendor-signed URLs (HTTPS, or HTTP only on EZVIZ-owned hosts), 4 MiB cap, timeout, JPEG-magic validation, 200 alarms and 256 MiB per installation; URLs never logged or stored |
 | Disk exhaustion | Recording quota, maximum duration, atomic files, bounded ACK tombstones and explicit retention owner |
 | Malformed cloud frames | Bounded chunk sizes, producer restart backoff and no unsafe parsing in the HTTP process |
 | FFmpeg hangs | Fixed argv, no shell, process-group termination and bounded shutdown |
 | Token race/corruption | Atomic replace with fsync and strict file mode; one token owner process; one lock orders every refresh and token write, and the refresh runs detached so a cancelled request cannot lose a rotated token (ADR-0022) |
 | Credential exfiltration at enrollment | Region redirects capped at two; API domains must be plain `*.ezvizlife.com` or `*.ezvizru.com` hosts |
-| Session leakage to media hosts | Snapshot and alarm-picture URLs fetched over HTTPS only, without session headers, HTTPS-only redirects and size bounds |
+| Session leakage to media hosts | Snapshot and alarm-picture URLs fetched without session or bearer headers and with size bounds. HTTPS on any host; plain HTTP (and HTTP redirects) only on `ezvizlife.com`, `ezvizru.com` and `ezviz.com` hosts, matched on a dot boundary, because EZVIZ can return `http://` capture URLs (0.13.2). An on-path attacker could read or swap that one picture but gains no credential; verification-code cameras also AES-encrypt it. Errors and logs name only scheme and host, never path or query |
 | SSRF/path traversal | Camera aliases from static config; no caller-controlled upstream URL or filesystem path |
 | Supply-chain compromise | Locked dependencies, CI audit, immutable image digest and no runtime package installation |
 

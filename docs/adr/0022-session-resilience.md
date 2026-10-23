@@ -52,8 +52,16 @@ as a wrong bridge token.
   late, the last good value up to 10 minutes old is served with
   `"stale": true`. Forced reads used by writes and their read-backs never use
   a stale value; an expired session is never masked by one.
-- **Pre-signed media.** Snapshot and alarm-picture URLs are fetched over HTTPS
-  only, without session headers, with HTTPS-only redirects and a size bound.
+- **Pre-signed media.** Snapshot and alarm-picture URLs are fetched without
+  session or bearer headers and with a size bound. HTTPS is accepted on any
+  host. Since 0.13.2 plain HTTP is also accepted, for the URL and for each of
+  at most three redirects, when the host is `ezvizlife.com`, `ezvizru.com` or
+  `ezviz.com` or a subdomain (dot boundary): EZVIZ can return `http://` capture
+  URLs (pyEzvizApi accepts both schemes), which the 0.11.0 HTTPS-only rule
+  rejected.
+  Nothing secret travels on that hop; an on-path attacker could read or swap
+  one picture, which verification-code cameras additionally AES-encrypt. Any
+  other host or scheme is refused, and errors name only scheme and host.
 - **Enrollment hosts.** Region redirects are capped at two; API domains must be
   plain `*.ezvizlife.com` hosts, or `*.ezvizru.com` (the Russian region's
   rewrite, evidenced in pyEzvizApi `c713642f`).

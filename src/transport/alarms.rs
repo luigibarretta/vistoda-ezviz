@@ -12,7 +12,7 @@ use crate::{
     config::CameraConfig,
     device::candidate_keys,
     error::BridgeError,
-    transport::{EzvizTransport, authed::download_presigned, http::meta_code},
+    transport::{EzvizTransport, http::meta_code, media::download_presigned},
 };
 
 const SUMMARY_PATH: &str = "/v3/unifiedmsg/summarybydevice/v2";

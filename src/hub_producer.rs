@@ -95,7 +95,7 @@ async fn record_result(
         tracing::warn!(
             camera = %inner.alias,
             error_type = error.diagnostic_code(),
-            detail = error.diagnostic_detail(),
+            detail = %error.logged_detail(),
             "upstream stream producer stopped"
         );
         *lock(&inner.last_failure) = Some(StreamFailure::from_error(error));

@@ -7,7 +7,7 @@
 //! read with a size bound, and errors never carry URLs (session identifiers
 //! travel in some query strings).
 
-use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
+use reqwest::{Method, RequestBuilder, Response, StatusCode};
 use serde_json::Value;
 
 use crate::{
@@ -109,35 +109,4 @@ pub(super) async fn read_json(response: Response, strict: bool) -> Result<Value,
         Err(error) if strict => Err(error.into()),
         Err(_) => Ok(Value::Null),
     }
-}
-
-/// Client for pre-signed media URLs: no session headers are ever attached,
-/// and redirects are followed only to HTTPS, at most three times.
-pub(super) fn media_client(timeout: std::time::Duration) -> Result<Client, BridgeError> {
-    Ok(Client::builder()
-        .timeout(timeout)
-        .redirect(reqwest::redirect::Policy::custom(|attempt| {
-            if attempt.url().scheme() == "https" && attempt.previous().len() < 3 {
-                attempt.follow()
-            } else {
-                attempt.stop()
-            }
-        }))
-        .build()?)
-}
-
-/// Downloads one pre-signed HTTPS URL into at most `max` bytes.
-pub(super) async fn download_presigned(
-    client: &Client,
-    url: &str,
-    max: usize,
-) -> Result<Vec<u8>, BridgeError> {
-    if !url.starts_with("https://") {
-        return Err(BridgeError::Upstream("media URL is not HTTPS".into()));
-    }
-    let response = client.get(url).send().await.map_err(http_error)?;
-    if !response.status().is_success() {
-        return Err(BridgeError::Upstream("media download failed".into()));
-    }
-    read_limited(response, max).await
 }

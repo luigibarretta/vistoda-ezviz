@@ -10,6 +10,9 @@ mod device_api;
 mod enroll;
 mod http;
 mod image;
+mod media;
+#[cfg(test)]
+mod media_tests;
 mod session;
 #[cfg(test)]
 mod session_fake_tests;

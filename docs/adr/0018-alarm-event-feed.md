@@ -34,7 +34,8 @@ Each camera keeps the newest 200 alarms in `/data/alarms/<alias>/history.json`
 alias starts empty. Sequences are assigned per process; a random `generation`
 UUID tells consumers to reset their cursor after a restart.
 
-Pictures are downloaded at arrival with a plain GET (HTTPS only, 4 MiB cap,
+Pictures are downloaded at arrival with a plain GET (HTTPS, or plain HTTP on
+EZVIZ-owned hosts as in ADR-0022, 4 MiB cap,
 15 s timeout, at most ten per camera per cycle), decoded and stored only when
 the result starts with a JPEG marker. `picCrypt=0` is clear, `picCrypt=1` uses
 the snapshot decryptor with the camera's verification-code file or the
