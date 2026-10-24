@@ -24,6 +24,12 @@ impl RecordingManager {
             return;
         };
         if let Err(error) = result {
+            tracing::warn!(
+                camera = %manifest.camera,
+                error_type = error.diagnostic_code(),
+                detail = %error.logged_detail(),
+                "recording failed"
+            );
             let code = match error {
                 BridgeError::Capacity(_) => "capacity",
                 BridgeError::Recording(_) => "invalid_media",

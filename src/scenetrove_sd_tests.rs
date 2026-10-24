@@ -84,3 +84,32 @@ async fn a_clip_already_in_the_destination_is_not_imported_again() {
     assert_eq!(bodies(&state), [(200, 320)]);
     task.abort();
 }
+
+#[tokio::test]
+async fn a_clip_still_recording_is_left_for_the_next_run_without_stopping() {
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let state = Arc::new(MockState::default());
+    state.slow_clip.store(true, Ordering::Relaxed);
+    let (base, task) = server(Arc::clone(&state)).await;
+    let template = PullRequest {
+        timeout_seconds: 1,
+        ..request(directory.path(), base, "")
+    };
+    let pulled = sd::pull_day(&template, &day(5))
+        .await
+        .unwrap_or_else(|error| panic!("{error}"));
+    // The 50 s clip outlives the wait; 100 s is imported, 200 s fails asleep.
+    assert_eq!(pulled.len(), 1);
+    assert_eq!(bodies(&state), [(50, 60), (100, 130), (200, 320)]);
+    let ledger: Value = serde_json::from_slice(
+        &fs::read(directory.path().join("media/.sd-ledger.json"))
+            .unwrap_or_else(|error| panic!("{error}")),
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    // Neither done nor an attempt: the next run resumes it under the same key.
+    assert_eq!(
+        ledger,
+        json!({"done": ["sd-front-100-130"], "attempts": {"sd-front-200-600": 1}})
+    );
+    task.abort();
+}

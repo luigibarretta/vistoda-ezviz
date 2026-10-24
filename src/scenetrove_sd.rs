@@ -24,6 +24,9 @@ const LEDGER: &str = ".sd-ledger.json";
 const FAILED: &str = "bridge recording failed: ";
 /// Prefix of `pull`'s error when the bridge refuses the request (key reuse).
 const KEY_REFUSED: &str = "bridge returned HTTP 400";
+/// `pull`'s error when the bridge is still working on a recording; the same
+/// key picks it up on the next run.
+const STILL_RUNNING: &str = "recording did not finish before deadline";
 /// Bridge recordings tried per clip before it is given up.
 const MAX_ATTEMPTS: u32 = 3;
 
@@ -141,6 +144,9 @@ pub async fn pull_day(template: &PullRequest, day: &SdDay) -> Result<Vec<PullRes
                     ledger.attempts.insert(clip, attempt + 1);
                 }
             }
+            // Slower than this run waits (playback runs about in real time):
+            // move on; the next run resumes the same recording by its key.
+            Err(BridgeError::Upstream(detail)) if detail == STILL_RUNNING => {}
             // The bridge itself is unreachable or misbehaving: stop the run.
             Err(error) => {
                 atomic_write_json(&ledger_path, &ledger)?;

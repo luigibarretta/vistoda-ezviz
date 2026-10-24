@@ -30,6 +30,8 @@ struct MockState {
     local_commit_seen: AtomicBool,
     expected_local: std::sync::Mutex<Option<PathBuf>>,
     bodies: std::sync::Mutex<Vec<Value>>,
+    /// Lists a clip at 50 s whose bridge recording never finishes.
+    slow_clip: AtomicBool,
 }
 
 async fn create(
@@ -43,6 +45,9 @@ async fn create(
         value["recording_id"] = json!(format!("00000000-0000-4000-8000-{start:012}"));
         value["sd_start"] = json!(start);
         let key = headers.get("idempotency-key").and_then(|v| v.to_str().ok());
+        if start == 50 {
+            value["status"] = json!("recording");
+        }
         // The 200 s clip's first attempt finds the camera asleep.
         if start == 200 && key.is_some_and(|key| key.ends_with("-a0")) {
             value["status"] = json!("failed");
@@ -57,15 +62,24 @@ async fn create(
     Json(value)
 }
 
-async fn sd_records() -> Json<Value> {
-    Json(
-        json!({"records":[{"start":200,"end":600,"type":"continuous"},
-                           {"start":100,"end":130,"type":"event"}]}),
-    )
+async fn sd_records(State(state): State<Arc<MockState>>) -> Json<Value> {
+    let mut records = vec![
+        json!({"start":200,"end":600,"type":"continuous"}),
+        json!({"start":100,"end":130,"type":"event"}),
+    ];
+    if state.slow_clip.load(Ordering::Relaxed) {
+        records.push(json!({"start":50,"end":60,"type":"event"}));
+    }
+    Json(json!({ "records": records }))
 }
 
-async fn status() -> Json<Value> {
-    Json(manifest())
+async fn status(axum::extract::Path(id): axum::extract::Path<String>) -> Json<Value> {
+    let mut value = manifest();
+    if id.ends_with("000000000050") {
+        value["recording_id"] = json!(id);
+        value["status"] = json!("recording");
+    }
+    Json(value)
 }
 
 async fn media() -> Response {
