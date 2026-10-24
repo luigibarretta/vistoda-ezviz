@@ -9,6 +9,7 @@ Reviewed 2026-09-10 against immutable commit IDs.
 | [albrzmr/ezviz_hp7](https://github.com/albrzmr/ezviz_hp7) | `b3dcd6e4e7bdb3467f8a164fbb5867a2c672475f` | MIT | Independent CPD7 LAN path, single upstream, warm/keyframe buffer, failure diagnostics | Design cross-check only |
 | [LethalEthan/LE-EZVIZ-VS](https://github.com/LethalEthan/LE-EZVIZ-VS) | `35a267cf2523034cd4022224a3dec2b7a0f6dbb7` | LGPL-2.1 | VTM/VTDU handoff, protobuf messages, keepalive and MPEG-PS/RTP variants; encryption incomplete | Protocol corroboration only |
 | [Bahrombekk/cloud-cam-viewer](https://github.com/Bahrombekk/cloud-cam-viewer) | `6ff4ad280dc18061cf073fcd9eb7931ab28de34a` | MIT | VTM pagination and encrypted H.264/HEVC RTP behavior | Bounded Rust adaptations; attribution and full license in `third_party/cloud-cam-viewer`; no Python runtime or permanent camera process |
+| [Stinocon/ezviz-stream-bridge](https://github.com/Stinocon/ezviz-stream-bridge) | `de35d0c1335543f5ec431f8dcd52452ddb0b87c0` | MIT | CP4 local-port and control-plane investigation (no local video path), RTP vs MPEG-PS per model, RFC 3640 AAC payload type 104, media-stall and wake cooldown | Findings and ideas only (reviewed 2026-10-24, ADR-0023); no copied code |
 
 The installed CP4 is a different model from HP7/CP7. Therefore its captured
 stream is authoritative: repository observations become requirements only

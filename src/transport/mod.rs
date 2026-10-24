@@ -1,3 +1,4 @@
+mod aac_rtp;
 mod alarms;
 mod authed;
 mod client;
@@ -13,6 +14,8 @@ mod image;
 mod media;
 #[cfg(test)]
 mod media_tests;
+mod rtp_audio;
+mod rtp_ts;
 mod session;
 #[cfg(test)]
 mod session_fake_tests;
@@ -20,6 +23,7 @@ mod session_outcome;
 #[cfg(test)]
 mod session_tests;
 mod token;
+mod ts_mux;
 mod video;
 mod video_pipeline;
 

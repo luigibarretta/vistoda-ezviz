@@ -12,7 +12,8 @@ use crate::{
     device::{DeviceStatus, ENCRYPTION_TTL, FAILURE_TTL, candidate_keys, parse_device_status},
     error::BridgeError,
     transport::{
-        ChunkConsumer, EzvizTransport, client::StatusEntry, timeout_duration, video_pipeline,
+        ChunkConsumer, EzvizTransport, client::StatusEntry, timeout_duration, video::RtpVideo,
+        video_pipeline,
     },
     vtm::VtmSession,
 };
@@ -141,9 +142,9 @@ impl EzvizTransport {
             let session = VtmSession::connect(url, timeout_duration(self.timeout_seconds)).await?;
             let result = video_pipeline::copy_as_mpeg_ts(
                 session,
-                key.code(),
-                &self.ffmpeg_path,
-                self.timeout_seconds,
+                RtpVideo::encrypted(key.code())?,
+                None,
+                true,
                 cancel.clone(),
                 Arc::clone(&output),
             )

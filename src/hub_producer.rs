@@ -10,6 +10,9 @@ use tokio_util::sync::CancellationToken;
 use super::{Failures, RawInner, lock};
 use crate::{hub_failure::StreamFailure, transport::ChunkConsumer};
 
+/// Minimum pause before a new upstream session after the camera went offline.
+pub(super) const OFFLINE_COOLDOWN: Duration = Duration::from_secs(30);
+
 struct Distributor {
     hub: Weak<RawInner>,
     generation: u64,
@@ -113,6 +116,13 @@ async fn record_result(
             Duration::from_secs(600)
         } else {
             Duration::from_secs(2_u64.pow(failures.count))
+        };
+        // A camera that went silent has usually just fallen asleep: a
+        // consumer that reconnects at once must not wake it straight again.
+        let backoff = if matches!(result, Err(crate::error::BridgeError::CameraOffline)) {
+            backoff.max(OFFLINE_COOLDOWN)
+        } else {
+            backoff
         };
         failures.next_start = Some(Instant::now() + backoff);
     } else {

@@ -149,7 +149,7 @@ pub(super) async fn harness(mode: Refresh) -> Harness {
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
         .unwrap_or_else(|error| panic!("{error}"));
     let health = SessionHealth::default();
-    let transport = EzvizTransport::load(path.clone(), 5, "/usr/bin/false".into(), health.clone())
+    let transport = EzvizTransport::load(path.clone(), 5, health.clone())
         .unwrap_or_else(|error| panic!("{error}"))
         .over_plain_http();
     Harness {

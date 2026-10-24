@@ -1,6 +1,9 @@
 use crate::error::BridgeError;
 
-use super::{VideoCodec, cipher::NalDecryptor};
+use super::{
+    VideoCodec,
+    cipher::{Chunks, NalDecryptor},
+};
 
 const MAX_FRAGMENT_BYTES: usize = 2 * 1024 * 1024;
 
@@ -8,25 +11,28 @@ pub(super) struct RtpNalDecryptor {
     codec: VideoCodec,
     nal: NalDecryptor,
     fragment: Option<Vec<u8>>,
+    stamp: u32,
 }
 
 impl RtpNalDecryptor {
-    pub(super) const fn new(codec: VideoCodec, key: [u8; 16]) -> Self {
+    pub(super) const fn new(codec: VideoCodec, key: Option<[u8; 16]>) -> Self {
         Self {
             codec,
             nal: NalDecryptor::new(codec, key),
             fragment: None,
+            stamp: 0,
         }
     }
 
-    pub(super) fn feed(&mut self, payload: &[u8]) -> Result<Vec<u8>, BridgeError> {
+    pub(super) fn feed(&mut self, stamp: u32, payload: &[u8]) -> Result<Chunks, BridgeError> {
+        self.stamp = stamp;
         match self.codec {
             VideoCodec::H264 => self.feed_h264(payload),
             VideoCodec::Hevc => self.feed_hevc(payload),
         }
     }
 
-    fn feed_h264(&mut self, payload: &[u8]) -> Result<Vec<u8>, BridgeError> {
+    fn feed_h264(&mut self, payload: &[u8]) -> Result<Chunks, BridgeError> {
         let Some(&first) = payload.first() else {
             return Ok(Vec::new());
         };
@@ -51,11 +57,11 @@ impl RtpNalDecryptor {
                 Ok(Vec::new())
             }
             24 => self.feed_aggregation(&payload[1..]),
-            _ => self.nal.feed(payload),
+            _ => self.nal.feed(self.stamp, payload),
         }
     }
 
-    fn feed_hevc(&mut self, payload: &[u8]) -> Result<Vec<u8>, BridgeError> {
+    fn feed_hevc(&mut self, payload: &[u8]) -> Result<Chunks, BridgeError> {
         if payload.len() < 2 {
             return Ok(Vec::new());
         }
@@ -81,11 +87,11 @@ impl RtpNalDecryptor {
                 Ok(Vec::new())
             }
             48 => self.feed_aggregation(&payload[2..]),
-            _ => self.nal.feed(payload),
+            _ => self.nal.feed(self.stamp, payload),
         }
     }
 
-    fn feed_aggregation(&mut self, mut payload: &[u8]) -> Result<Vec<u8>, BridgeError> {
+    fn feed_aggregation(&mut self, mut payload: &[u8]) -> Result<Chunks, BridgeError> {
         let mut output = Vec::new();
         while !payload.is_empty() {
             if payload.len() < 2 {
@@ -100,25 +106,25 @@ impl RtpNalDecryptor {
                     "RTP aggregation unit is invalid".into(),
                 ));
             }
-            output.extend(self.nal.feed(&payload[..size])?);
+            output.extend(self.nal.feed(self.stamp, &payload[..size])?);
             payload = &payload[size..];
         }
         Ok(output)
     }
 
-    fn finish_fragment(&mut self) -> Result<Vec<u8>, BridgeError> {
+    fn finish_fragment(&mut self) -> Result<Chunks, BridgeError> {
         let fragment = self
             .fragment
             .take()
             .ok_or_else(|| BridgeError::Upstream("RTP fragment ended before it started".into()))?;
-        self.nal.feed(&fragment)
+        self.nal.feed(self.stamp, &fragment)
     }
 }
 
 fn bound_fragment(fragment: &[u8]) -> Result<(), BridgeError> {
     if fragment.len() > MAX_FRAGMENT_BYTES {
         return Err(BridgeError::Capacity(
-            "encrypted RTP fragment exceeded its byte bound".into(),
+            "RTP fragment exceeded its byte bound".into(),
         ));
     }
     Ok(())

@@ -1,145 +1,59 @@
-use std::{path::Path, process::Stdio, sync::Arc};
+use std::sync::Arc;
 
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    process::Command,
-    time::timeout,
-};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     error::BridgeError,
-    transport::{ChunkConsumer, timeout_duration, video::EncryptedRtpVideo},
+    transport::{ChunkConsumer, rtp_ts::RtpToTs, video::RtpVideo},
     vtm::VtmSession,
 };
 
+/// Serves an RTP camera as MPEG-TS: depacketized (and decrypted when the
+/// [`RtpVideo`] holds a key) and muxed in-process on the RTP timestamps,
+/// with the camera's AAC audio when it sends any. `first` is a payload the
+/// caller already read to choose this path.
 pub(super) async fn copy_as_mpeg_ts(
     mut session: VtmSession,
-    verification_code: &str,
-    ffmpeg_path: &Path,
-    timeout_seconds: u64,
+    video: RtpVideo,
+    first: Option<Vec<u8>>,
+    encrypted_channel: bool,
     cancel: CancellationToken,
     output: Arc<dyn ChunkConsumer>,
 ) -> Result<(), BridgeError> {
-    let mut decryptor = EncryptedRtpVideo::new(verification_code)?;
-    let mut child = None;
-    let mut stdin = None;
-    let mut reader = None;
-    let pipeline_cancel = CancellationToken::new();
-
+    let mut stream = RtpToTs::new(video);
+    let mut first = first;
     loop {
-        let packet = tokio::select! {
-            () = cancel.cancelled() => None,
-            () = pipeline_cancel.cancelled() => None,
-            result = session.next_payload(&pipeline_cancel, true) => result?,
+        let packet = match first.take() {
+            Some(packet) => packet,
+            None => match session.next_payload(&cancel, encrypted_channel).await? {
+                Some(packet) => packet,
+                None => break,
+            },
         };
-        let Some(packet) = packet else { break };
-        let clear = decryptor.feed(&packet)?;
-        if clear.is_empty() {
+        if packet.is_empty() {
             continue;
         }
-        if child.is_none() {
-            let codec = decryptor.codec().ok_or_else(|| {
-                BridgeError::Upstream("encrypted video codec is unavailable".into())
-            })?;
-            let mut process = Command::new(ffmpeg_path)
-                .args([
-                    "-hide_banner",
-                    "-loglevel",
-                    "error",
-                    "-fflags",
-                    "+genpts+nobuffer",
-                    "-f",
-                    codec.ffmpeg_name(),
-                    "-i",
-                    "pipe:0",
-                    "-map",
-                    "0:v:0",
-                    "-an",
-                    "-c:v",
-                    "copy",
-                    "-muxdelay",
-                    "0",
-                    "-mpegts_flags",
-                    "+resend_headers",
-                    "-f",
-                    "mpegts",
-                    "pipe:1",
-                ])
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::null())
-                .kill_on_drop(true)
-                .spawn()?;
-            stdin = process.stdin.take();
-            reader = Some(spawn_reader(
-                process.stdout.take().ok_or_else(|| {
-                    BridgeError::Upstream("encrypted-video FFmpeg stdout is unavailable".into())
-                })?,
-                Arc::clone(&output),
-                pipeline_cancel.clone(),
-            ));
-            child = Some(process);
+        let chunk = stream.feed(&packet)?;
+        if !chunk.is_empty() && !output.consume(chunk) {
+            return Ok(());
         }
-        let writer = stdin.as_mut().ok_or_else(|| {
-            BridgeError::Upstream("encrypted-video FFmpeg stdin is unavailable".into())
-        })?;
-        timeout(timeout_duration(timeout_seconds), writer.write_all(&clear))
-            .await
-            .map_err(|_| BridgeError::Upstream("video decrypt pipeline timed out".into()))??;
     }
-
-    if let Some(mut writer) = stdin {
-        let _ignored = writer.shutdown().await;
+    let (frames, unreadable) = stream.audio_frames();
+    if unreadable > 0 {
+        tracing::warn!(frames, unreadable, "RTP audio payloads could not be read");
     }
-    let Some(mut process) = child else {
+    if !stream.started() {
         return if cancel.is_cancelled() {
             Ok(())
         } else {
             Err(BridgeError::Upstream(
-                "encrypted stream ended before a supported codec was found".into(),
+                "RTP stream ended before a keyframe of a supported codec".into(),
             ))
         };
-    };
-    let status = timeout(timeout_duration(5), process.wait()).await;
-    pipeline_cancel.cancel();
-    if let Some(reader) = reader {
-        reader.await??;
     }
-    if cancel.is_cancelled() {
-        return Ok(());
+    let tail = stream.finish();
+    if !tail.is_empty() {
+        output.consume(tail);
     }
-    match status {
-        Ok(Ok(status)) if status.success() => Ok(()),
-        Ok(Ok(_)) => Err(BridgeError::Upstream(
-            "encrypted-video FFmpeg remux failed".into(),
-        )),
-        Ok(Err(error)) => Err(error.into()),
-        Err(_) => {
-            let _ignored = process.kill().await;
-            Err(BridgeError::Upstream(
-                "encrypted-video FFmpeg shutdown timed out".into(),
-            ))
-        }
-    }
-}
-
-fn spawn_reader(
-    mut stdout: tokio::process::ChildStdout,
-    consumer: Arc<dyn ChunkConsumer>,
-    cancel: CancellationToken,
-) -> tokio::task::JoinHandle<Result<(), BridgeError>> {
-    tokio::spawn(async move {
-        let mut buffer = vec![0_u8; 64 * 1024];
-        loop {
-            let read = tokio::select! {
-                () = cancel.cancelled() => return Ok(()),
-                result = stdout.read(&mut buffer) => result?,
-            };
-            if read == 0 || !consumer.consume(buffer[..read].to_vec()) {
-                cancel.cancel();
-                return Ok(());
-            }
-        }
-    })
+    Ok(())
 }

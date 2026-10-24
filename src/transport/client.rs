@@ -25,7 +25,6 @@ use crate::{
         session::SessionStore,
         timeout_duration,
     },
-    vtm::VtmSession,
 };
 
 /// One cached status lookup; `status: None` records a recent failure.
@@ -45,7 +44,6 @@ pub struct EzvizTransport {
     /// `https` in production; plain HTTP only for the in-process fake server.
     pub(super) scheme: &'static str,
     pub(super) allocation_lock: Mutex<()>,
-    pub(super) ffmpeg_path: PathBuf,
     pub(super) timeout_seconds: u64,
     pub(super) status_cache: StatusCache,
     pub(super) cloud_keys: CloudKeyGuard,
@@ -62,7 +60,6 @@ impl EzvizTransport {
     pub fn load(
         path: PathBuf,
         timeout_seconds: u64,
-        ffmpeg_path: PathBuf,
         health: SessionHealth,
     ) -> Result<Self, BridgeError> {
         let timeout = timeout_duration(timeout_seconds);
@@ -78,7 +75,6 @@ impl EzvizTransport {
             scheme: "https",
             timeout_seconds,
             allocation_lock: Mutex::new(()),
-            ffmpeg_path,
             status_cache: std::sync::Mutex::new(BTreeMap::new()),
         })
     }
@@ -220,10 +216,6 @@ impl CameraTransport for EzvizTransport {
         if self.video_is_encrypted(camera).await {
             return self.stream_encrypted_video(camera, cancel, output).await;
         }
-        let url = self.cloud_stream_url(camera).await?;
-        let mut session = VtmSession::connect(url, timeout_duration(self.timeout_seconds)).await?;
-        session
-            .copy_payloads(&cancel, |chunk| output.consume(chunk))
-            .await
+        self.stream_clear(camera, cancel, output).await
     }
 }

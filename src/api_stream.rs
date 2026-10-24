@@ -123,7 +123,12 @@ pub(super) async fn ts_stream(
         Ok(chunk) => chunk,
         Err(error) => {
             hub.unsubscribe(subscription.id);
-            return Err(error);
+            // The TS hub reads the raw hub: report why that one is down
+            // (e.g. camera_offline during its cooldown) instead of a bare 503.
+            return Err(match (error, runtime.raw.get(&camera)) {
+                (BridgeError::UpstreamUnavailable, Some(raw)) => raw.startup_error(),
+                (error, _) => error,
+            });
         }
     };
     let body = Body::from_stream(stream! {

@@ -157,7 +157,14 @@ impl RawStreamHub {
             .producer_generation
             .fetch_add(1, Ordering::AcqRel)
             .wrapping_add(1);
-        *lock(&self.inner.last_failure) = None;
+        // While a failure backoff is pending, keep the reason it started so a
+        // subscriber that times out waiting is told the camera is offline.
+        let cooling_down = lock(&self.inner.failures)
+            .next_start
+            .is_some_and(|start| start > Instant::now());
+        if !cooling_down {
+            *lock(&self.inner.last_failure) = None;
+        }
         let inner = Arc::clone(&self.inner);
         let task_cancel = cancel.clone();
         let task = tokio::spawn(async move { run_producer(inner, task_cancel, generation).await });

@@ -14,6 +14,9 @@ mod pending;
 use pending::PendingNal;
 
 const START_CODE: &[u8] = b"\x00\x00\x00\x01";
+
+/// Annex-B output, each part tagged with the RTP timestamp of its NAL.
+pub(super) type Chunks = Vec<(u32, Vec<u8>)>;
 const ENCRYPTED_PREFIX_BYTES: usize = 4096;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -32,23 +35,37 @@ pub(super) struct NalDecryptor {
     inter_decrypted: Vec<u8>,
     pending: Option<VecDeque<PendingNal>>,
     pending_bytes: usize,
+    /// RTP timestamp of the NAL being fed.
+    stamp: u32,
 }
 
 impl NalDecryptor {
-    pub(super) const fn new(codec: VideoCodec, key: [u8; 16]) -> Self {
+    /// Without a key the stream is clear by definition: no classification,
+    /// no buffering, every NAL is passed through in Annex-B form.
+    pub(super) const fn new(codec: VideoCodec, key: Option<[u8; 16]>) -> Self {
+        let clear = key.is_none();
         Self {
             codec,
-            key,
-            mode: EncryptionMode::Unknown,
+            key: match key {
+                Some(key) => key,
+                None => [0; 16],
+            },
+            mode: if clear {
+                EncryptionMode::Clear
+            } else {
+                EncryptionMode::Unknown
+            },
             inter_encrypted: None,
             inter_clear: Vec::new(),
             inter_decrypted: Vec::new(),
-            pending: Some(VecDeque::new()),
+            pending: if clear { None } else { Some(VecDeque::new()) },
             pending_bytes: 0,
+            stamp: 0,
         }
     }
 
-    pub(super) fn feed(&mut self, nal: &[u8]) -> Result<Vec<u8>, BridgeError> {
+    pub(super) fn feed(&mut self, stamp: u32, nal: &[u8]) -> Result<Chunks, BridgeError> {
+        self.stamp = stamp;
         let header = match self.codec {
             VideoCodec::H264 => 1,
             VideoCodec::Hevc => 2,
@@ -121,7 +138,7 @@ impl NalDecryptor {
         Ok(())
     }
 
-    fn emit_nal(&mut self, nal: &[u8]) -> Result<Vec<u8>, BridgeError> {
+    fn emit_nal(&mut self, nal: &[u8]) -> Result<Chunks, BridgeError> {
         match self.mode {
             EncryptionMode::Unknown => Ok(Vec::new()),
             EncryptionMode::Clear => Ok(self.put(annex_b(nal))),
@@ -148,7 +165,7 @@ impl NalDecryptor {
         }
     }
 
-    fn emit_hint(&mut self, nal: &[u8], drop: usize) -> Vec<u8> {
+    fn emit_hint(&mut self, nal: &[u8], drop: usize) -> Chunks {
         let decoded = (nal.len() >= drop + 16).then(|| self.decrypt_first(&nal[drop..drop + 16]));
         if decoded
             .as_ref()

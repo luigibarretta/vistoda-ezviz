@@ -216,3 +216,9 @@ Encrypted RTP is opt-in per camera and requires a mode-0600 verification-code
 file. The current decryptor supports compatible H.264/HEVC RTP profiles; it
 fails closed for encrypted MPEG-PS/MPEG-TS variants rather than emitting cipher
 text. Keep the official app available until a canary proves a device profile.
+RTP cameras, encrypted or clear, are muxed in-process on their own clock and
+keep their AAC audio when they send it (ADR-0023); the log line
+"RTP AAC audio track found" confirms it. A live session that carries no media
+for the upstream timeout ends as `camera_offline`, and the next session for
+that camera waits at least 30 seconds so a sleeping battery camera is not
+woken again at once.

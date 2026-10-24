@@ -1,19 +1,65 @@
+use std::sync::Arc;
+
 use chrono::Utc;
 use reqwest::Method;
 use serde_json::Value;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     config::CameraConfig,
     error::BridgeError,
     transport::{
+        ChunkConsumer,
         authed::{http_error, read_json},
         client::{EzvizTransport, success_code},
         http::{find_resource, jwt_sign, required_string, value_u16},
+        timeout_duration,
+        video::{self, RtpVideo},
+        video_pipeline,
     },
-    vtm::{VtmUrlRequest, build_vtm_url},
+    vtm::{VtmSession, VtmUrlRequest, build_vtm_url},
 };
 
 impl EzvizTransport {
+    /// Live media of a camera without video encryption.
+    pub(super) async fn stream_clear(
+        &self,
+        camera: &CameraConfig,
+        cancel: CancellationToken,
+        output: Arc<dyn ChunkConsumer>,
+    ) -> Result<(), BridgeError> {
+        let url = self.cloud_stream_url(camera).await?;
+        let mut session = VtmSession::connect(url, timeout_duration(self.timeout_seconds)).await?;
+        // The relay forwards whatever the camera produces: MPEG-PS on some
+        // models, RTP on others even with encryption off. The first payload
+        // decides; MPEG-PS keeps the untouched pass-through.
+        let first = loop {
+            match session.next_payload(&cancel, false).await? {
+                None => return Ok(()),
+                Some(payload) if payload.is_empty() => {}
+                Some(payload) => break payload,
+            }
+        };
+        if video::is_rtp(&first) {
+            tracing::info!("camera sends RTP without encryption; muxing it in-process");
+            return video_pipeline::copy_as_mpeg_ts(
+                session,
+                RtpVideo::clear(),
+                Some(first),
+                false,
+                cancel,
+                output,
+            )
+            .await;
+        }
+        if !output.consume(first) {
+            return Ok(());
+        }
+        session
+            .copy_payloads(&cancel, |chunk| output.consume(chunk))
+            .await
+    }
+
     pub(super) async fn cloud_stream_url(
         &self,
         camera: &CameraConfig,

@@ -119,7 +119,6 @@ async fn serve_runtime(address: &str, config: BridgeConfig) -> Result<(), Bridge
     let transport = Arc::new(EzvizTransport::load(
         config.ezviz_token_file.clone(),
         config.upstream_timeout_seconds,
-        config.ffmpeg_path.clone(),
         session.clone(),
     )?);
     let _session_start = transport.start();

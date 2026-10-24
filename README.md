@@ -1,36 +1,38 @@
 # Vistoda EZVIZ
 
-Production-oriented Vistoda connector for modern EZVIZ cameras that expose cloud
-VTM/VTDU media but no usable RTSP listener. One authenticated upstream session
-is shared across bounded, authenticated outputs for Home Assistant and
-SceneTrove.
+Vistoda connector for EZVIZ cameras that offer cloud VTM/VTDU media but no RTSP.
+One upstream session is shared by bounded, authenticated outputs for Home
+Assistant and SceneTrove.
 
-The Rust package and executable remain `ezviz-vtm-bridge` as a compatibility
-contract for existing images, health checks and automation. The product and
-canonical repository are Vistoda EZVIZ and `vistoda-ezviz`.
+The Rust package and executable stay `ezviz-vtm-bridge` for compatibility; the
+product and repository are Vistoda EZVIZ and `vistoda-ezviz`.
 
 The released scope is snapshots, compatible live streams, finite local
 recordings, alarms, a read-only microSD status and record index, and native
 camera controls that replace Home Assistant's separate `ezviz` login. It does not
 provide voice talk or microSD playback, and encrypted-stream compatibility
-varies by model. Home Assistant OS users should
-start with the shared [setup guide](https://github.com/luigibarretta/vistoda-addons/blob/main/GETTING_STARTED.md).
+varies by model. On Home Assistant OS start with the [setup guide](https://github.com/luigibarretta/vistoda-addons/blob/main/GETTING_STARTED.md).
+
+<p align="center">
+  <img src="docs/images/ezviz.png" alt="Vistoda EZVIZ page in Home Assistant: door viewer with arm control, latest image, live and snapshot buttons, battery, events, encryption and microSD status" width="68%">
+  <img src="docs/images/ezviz-mobile.png" alt="The same EZVIZ page on a phone" width="25%">
+</p>
+<p align="center"><sub>The Vistoda EZVIZ page in Home Assistant (desktop and phone). Camera images are blurred.</sub></p>
 
 ## Why it exists
 
-Some EZVIZ devices work in the vendor app while offering no accessible LAN
-stream. Embedding the evolving vendor protocol separately in every consumer
-would spread credentials, failure modes and proprietary details. This bridge
-keeps that dependency behind a small, versioned HTTP contract.
+Some EZVIZ devices (door viewers, battery models) have no local video interface
+at all: the vendor cloud is their only stream. This bridge keeps that protocol,
+its credentials and failure modes behind a small, versioned HTTP contract.
 
-It does not transcode video, record continuously, expose an Internet route or
-modify camera firmware.
+It does not transcode, record continuously, expose an Internet route or modify
+firmware.
 
 ## Capabilities
 
 - canonical MPEG-PS (`video/mpeg`) for clear-media cameras and SceneTrove;
-- opt-in AES-decrypted H.264/HEVC RTP for compatible encrypted VTM cameras,
-  exposed to consumers as MPEG-TS without video re-encoding;
+- RTP cameras (AES-encrypted H.264/HEVC, or clear) muxed to MPEG-TS in-process
+  at the camera's own frame rate, with its AAC audio and no re-encoding;
 - complete bounded VTM inventory pagination, exact serial/channel selection and
   optional NVR channel/substream configuration;
 - copy-remuxed MPEG-TS (`video/mp2t`) for Home Assistant and media clients;
@@ -47,7 +49,8 @@ modify camera firmware.
 - server-paginated archive inventory, private spool metadata and on-demand
   browser MP4 playback;
 - one lazy upstream shared by multiple bounded consumers;
-- hard live-client lifetime limits that protect battery-powered cameras;
+- battery protection: hard live-client lifetimes, sessions without media end as
+  `camera_offline`, and a 30 s pause before the camera is woken again;
 - health and Prometheus metrics without serials, tokens, URLs or media.
 
 ## Architecture
@@ -56,15 +59,13 @@ modify camera firmware.
 EZVIZ VTM/VTDU
       |
       v
-native Rust transport -> bounded PS or decrypted-RTP/TS hub -> recordings/snapshots
+native Rust transport -> bounded PS or RTP->TS (audio, own clock) hub -> recordings
                                       |
                                       +-> shared FFmpeg copy-remux -> MPEG-TS
 ```
 
-The transport and operational tooling implement the required VTM/VTDU wire
-subset directly in safe Rust; no Python source or vendor SDK is present.
-Consumers depend only on
-[`openapi.yaml`](openapi.yaml). Architectural choices and consequences are
+The VTM/VTDU wire subset is implemented in safe Rust, with no Python or vendor
+SDK. Consumers depend only on [`openapi.yaml`](openapi.yaml). Architectural choices and consequences are
 indexed in [`docs/adr/README.md`](docs/adr/README.md).
 
 ## Home Assistant OS
@@ -97,9 +98,8 @@ cameras:
     verification_code: ABCDEF  # optional; the label code on the camera
 ```
 
-The app atomically writes the existing alias-keyed `cameras.json` contract and
-publishes one `media_bridge` discovery device per alias. Existing installations
-with `alias`, `camera_serial`, `camera_channel`, and `substream` continue to
+The app writes the alias-keyed `cameras.json` contract and publishes one
+`media_bridge` discovery device per alias; legacy single-camera options still
 work when `cameras` is missing or empty. A verification code is written only to
 a mode-0600 file and is used solely as the decryption key: the bridge follows
 the camera's cloud encryption flag, so entering the label code on a clear

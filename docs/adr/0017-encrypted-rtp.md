@@ -1,5 +1,7 @@
 # ADR-0017: Bounded encrypted RTP compatibility
 
+The FFmpeg remux step below was replaced by in-process muxing in ADR-0023.
+
 ## Context
 
 Some VTM camera profiles send clear MPEG-PS, while others return AES-obscured

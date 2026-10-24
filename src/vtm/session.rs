@@ -23,6 +23,9 @@ pub struct VtmSession {
     info: StreamInfo,
     timeout: Duration,
     last_keepalive: Instant,
+    /// Last media payload, or the session start. Keepalive replies keep the
+    /// socket busy without video, so they must not count as liveness.
+    last_media: Instant,
 }
 
 impl VtmSession {
@@ -44,6 +47,7 @@ impl VtmSession {
                 info: StreamInfo::default(),
                 timeout: timeout_duration,
                 last_keepalive: Instant::now(),
+                last_media: Instant::now(),
             };
             session.start(redirect_key.as_deref()).await?;
             if let Some(result) = session.info.result.filter(|result| *result != 0) {
@@ -62,6 +66,7 @@ impl VtmSession {
                 redirect_key = Some(key);
                 continue;
             }
+            session.last_media = Instant::now();
             return Ok(session);
         }
         Err(BridgeError::Upstream("too many VTM redirects".into()))
@@ -117,8 +122,18 @@ impl VtmSession {
                 self.keepalive(KEEPALIVE_REQUEST).await?;
                 self.last_keepalive = Instant::now();
             }
+            let media_deadline = self.last_media + self.timeout;
+            // Biased: the media deadline wins over the per-read timeout that
+            // expires at the same moment, so a silent camera reads as offline.
             let packet = tokio::select! {
+                biased;
                 () = cancel.cancelled() => return Ok(None),
+                () = tokio::time::sleep_until(media_deadline) => {
+                    // A battery camera that fell asleep mid-stream, or never
+                    // woke: end the cloud session instead of holding it open.
+                    tracing::warn!("VTM session carried no media within its timeout");
+                    return Err(BridgeError::CameraOffline);
+                }
                 packet = self.read_packet() => packet?,
             };
             if packet.message_code == KEEPALIVE_REQUEST {
@@ -130,6 +145,11 @@ impl VtmSession {
                 || (allow_encrypted_stream
                     && packet.channel == crate::vtm::CHANNEL_ENCRYPTED_STREAM)
             {
+                // An empty stream packet is not media: it must not keep a
+                // sleeping camera's session alive.
+                if !packet.body.is_empty() {
+                    self.last_media = Instant::now();
+                }
                 return Ok(Some(packet.body));
             }
             if packet.encrypted() {
