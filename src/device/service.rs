@@ -78,6 +78,20 @@ impl DeviceService {
         self.source.get().ok_or(BridgeError::UpstreamUnavailable)
     }
 
+    /// Camera-local playback bounds for an epoch interval.
+    pub async fn playback_times(
+        &self,
+        camera: &str,
+        (start, end): (i64, i64),
+    ) -> Result<(String, String), BridgeError> {
+        let slot = self.slot(camera)?;
+        let status = self.source()?.device_status(&slot.config).await?;
+        status
+            .playback_time(start)
+            .zip(status.playback_time(end))
+            .ok_or_else(|| BridgeError::Recording("microSD interval is out of range".into()))
+    }
+
     /// Cached microSD status; vendor failures become `unknown`.
     pub async fn storage(&self, camera: &str) -> Result<StorageReport, BridgeError> {
         let slot = self.slot(camera)?;

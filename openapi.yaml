@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: EZVIZ VTM Bridge
-  version: 1.10.0
+  version: 1.11.0
   description: Internal bounded media contract for Home Assistant and SceneTrove.
 servers: [{url: http://ezviz-vtm-bridge:8765}]
 paths:
@@ -102,24 +102,7 @@ paths:
   /v1/cameras/{camera}/controls: {$ref: "openapi/controls.yaml#/controls"}
   /v1/cameras/{camera}/ptz: {$ref: "openapi/controls.yaml#/ptz"}
   /v1/account/defence: {$ref: "openapi/controls.yaml#/accountDefence"}
-  /v1/cameras/{camera}/recordings:
-    post:
-      security: [{bearerAuth: []}]
-      parameters:
-        - $ref: "#/components/parameters/Camera"
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema: {type: string, minLength: 8, maxLength: 128}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {type: object, additionalProperties: false, required: [duration_seconds], properties: {duration_seconds: {type: integer, minimum: 1}}}
-      responses:
-        "202":
-          description: Recording accepted or existing idempotent result
-          content: {application/json: {schema: {$ref: "#/components/schemas/Recording"}}}
+  /v1/cameras/{camera}/recordings: {$ref: "openapi/recordings.yaml#/cameraRecordings"}
   /v1/recordings:
     get:
       summary: List the bounded standalone Vistoda recording spool
@@ -233,6 +216,9 @@ components:
         bytes: {type: [integer, "null"]}
         sha256: {type: [string, "null"]}
         error_code: {type: [string, "null"]}
+        source: {type: string, enum: [sd], description: Present only for a microSD interval}
+        sd_start: {type: integer, description: microSD interval start, epoch seconds}
+        sd_end: {type: integer, description: microSD interval end, epoch seconds}
     Pagination:
       type: object
       additionalProperties: false

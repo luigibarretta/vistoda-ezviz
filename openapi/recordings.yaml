@@ -1,0 +1,32 @@
+# Recording creation path item referenced from ../openapi.yaml.
+cameraRecordings:
+  post:
+    security: [{bearerAuth: []}]
+    parameters:
+      - $ref: "../openapi.yaml#/components/parameters/Camera"
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema: {type: string, minLength: 8, maxLength: 128}
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            description: >-
+              A live capture, or one microSD interval in epoch seconds (ADR-0024).
+              microSD answers 429 while the camera streams live and 409 while
+              another recording of the camera is active; a failed interval
+              reports error_code sd_no_recording, camera_offline or
+              upstream_failure.
+            oneOf:
+              - {type: object, additionalProperties: false, required: [duration_seconds], properties: {duration_seconds: {type: integer, minimum: 1}, source: {const: live}}}
+              - {type: object, additionalProperties: false, required: [source, start, end], properties: {source: {const: sd}, start: {type: integer}, end: {type: integer}}}
+    responses:
+      "202":
+        description: Recording accepted or existing idempotent result
+        content: {application/json: {schema: {$ref: "../openapi.yaml#/components/schemas/Recording"}}}
+      "400": {description: Invalid duration, interval or Idempotency-Key reuse}
+      "404": {$ref: "../openapi.yaml#/components/responses/NotFound"}
+      "409": {description: Another recording of this camera is active (microSD)}
+      "429": {description: The camera streams live (microSD), or the spool lacks headroom}

@@ -10,9 +10,10 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     error::BridgeError,
     vtm::{
-        CHANNEL_MESSAGE, CHANNEL_STREAM, KEEPALIVE_REQUEST, KEEPALIVE_RESPONSE,
+        CHANNEL_MESSAGE, CHANNEL_STREAM, CHANNEL_STREAM_ALT, KEEPALIVE_REQUEST, KEEPALIVE_RESPONSE,
         STREAM_INFO_REQUEST, STREAM_INFO_RESPONSE, StreamInfo, VtmPacket, address::endpoint,
-        build_keepalive, build_stream_info, decode_header, encode_packet, framing::HEADER_SIZE,
+        build_keepalive, build_playback_stream_info, build_stream_info, decode_header,
+        encode_packet, framing::HEADER_SIZE,
     },
 };
 
@@ -26,12 +27,31 @@ pub struct VtmSession {
     /// Last media payload, or the session start. Keepalive replies keep the
     /// socket busy without video, so they must not count as liveness.
     last_media: Instant,
+    /// microSD playback: the relay ends a finished interval by closing.
+    playback: bool,
+    media_seen: bool,
 }
 
 impl VtmSession {
     pub async fn connect(
         stream_url: String,
         timeout_duration: Duration,
+    ) -> Result<Self, BridgeError> {
+        Self::open(stream_url, timeout_duration, false).await
+    }
+
+    /// A `/playback?` session; it ends when the relay closes after media.
+    pub async fn connect_playback(
+        stream_url: String,
+        timeout_duration: Duration,
+    ) -> Result<Self, BridgeError> {
+        Self::open(stream_url, timeout_duration, true).await
+    }
+
+    async fn open(
+        stream_url: String,
+        timeout_duration: Duration,
+        playback: bool,
     ) -> Result<Self, BridgeError> {
         let mut current_url = stream_url;
         let mut redirect_key = None;
@@ -48,11 +68,17 @@ impl VtmSession {
                 timeout: timeout_duration,
                 last_keepalive: Instant::now(),
                 last_media: Instant::now(),
+                playback,
+                media_seen: false,
             };
             session.start(redirect_key.as_deref()).await?;
             if let Some(result) = session.info.result.filter(|result| *result != 0) {
-                if result == 5404 {
-                    return Err(BridgeError::CameraOffline);
+                match result {
+                    // 5404 offline; 5405 the device did not answer (asleep).
+                    5404 | 5405 => return Err(BridgeError::CameraOffline),
+                    // No microSD recording in the requested interval.
+                    5402 if playback => return Err(BridgeError::SdNoRecording),
+                    _ => {}
                 }
                 let Some(url) = session.info.redirect_url.clone() else {
                     return Err(BridgeError::Upstream(format!(
@@ -73,7 +99,11 @@ impl VtmSession {
     }
 
     async fn start(&mut self, redirect_key: Option<&str>) -> Result<(), BridgeError> {
-        let body = build_stream_info(&self.stream_url, redirect_key);
+        let body = if self.playback {
+            build_playback_stream_info(&self.stream_url, redirect_key)
+        } else {
+            build_stream_info(&self.stream_url, redirect_key)
+        };
         self.send(CHANNEL_MESSAGE, STREAM_INFO_REQUEST, &body)
             .await?;
         for _ in 0..20 {
@@ -106,9 +136,8 @@ impl VtmSession {
         }
     }
 
-    /// Return the next media payload while keeping the VTM session alive.
-    /// Encrypted media-channel packets are exposed only to the opt-in video
-    /// decryptor; encrypted control messages always fail closed.
+    /// The next media payload, keeping the session alive. Encrypted media only
+    /// reaches the opt-in decryptor; encrypted control messages fail closed.
     pub async fn next_payload(
         &mut self,
         cancel: &CancellationToken,
@@ -119,36 +148,48 @@ impl VtmSession {
                 return Ok(None);
             }
             if self.last_keepalive.elapsed() >= Duration::from_secs(5) {
-                self.keepalive(KEEPALIVE_REQUEST).await?;
+                match self.keepalive(KEEPALIVE_REQUEST).await {
+                    Err(BridgeError::Io(error)) if self.finished_playback(&error) => {
+                        return Ok(None);
+                    }
+                    other => other?,
+                }
                 self.last_keepalive = Instant::now();
             }
             let media_deadline = self.last_media + self.timeout;
-            // Biased: the media deadline wins over the per-read timeout that
-            // expires at the same moment, so a silent camera reads as offline.
+            // Biased: the media deadline beats the per-read timeout it ties with.
             let packet = tokio::select! {
                 biased;
                 () = cancel.cancelled() => return Ok(None),
                 () = tokio::time::sleep_until(media_deadline) => {
-                    // A battery camera that fell asleep mid-stream, or never
-                    // woke: end the cloud session instead of holding it open.
+                    // A finished interval may go quiet instead of closing;
+                    // otherwise the camera slept or never woke.
+                    if self.playback && self.media_seen {
+                        return Ok(None);
+                    }
                     tracing::warn!("VTM session carried no media within its timeout");
                     return Err(BridgeError::CameraOffline);
                 }
-                packet = self.read_packet() => packet?,
+                packet = self.read_packet() => match packet {
+                    Err(BridgeError::Io(error)) if self.finished_playback(&error) => {
+                        return Ok(None);
+                    }
+                    other => other?,
+                },
             };
             if packet.message_code == KEEPALIVE_REQUEST {
                 self.keepalive(KEEPALIVE_RESPONSE).await?;
                 self.last_keepalive = Instant::now();
                 continue;
             }
-            if packet.channel == CHANNEL_STREAM
+            if matches!(packet.channel, CHANNEL_STREAM | CHANNEL_STREAM_ALT)
                 || (allow_encrypted_stream
                     && packet.channel == crate::vtm::CHANNEL_ENCRYPTED_STREAM)
             {
-                // An empty stream packet is not media: it must not keep a
-                // sleeping camera's session alive.
+                // An empty stream packet must not keep a sleeping camera alive.
                 if !packet.body.is_empty() {
                     self.last_media = Instant::now();
+                    self.media_seen = true;
                 }
                 return Ok(Some(packet.body));
             }
@@ -158,6 +199,17 @@ impl VtmSession {
                 ));
             }
         }
+    }
+
+    /// A playback relay closing the socket after media ends the interval.
+    fn finished_playback(&self, error: &std::io::Error) -> bool {
+        use std::io::ErrorKind;
+        self.playback
+            && self.media_seen
+            && matches!(
+                error.kind(),
+                ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset | ErrorKind::BrokenPipe
+            )
     }
 
     async fn keepalive(&mut self, code: u16) -> Result<(), BridgeError> {

@@ -127,7 +127,11 @@ for 24 hours: encrypted live starts fail with a clear error and encrypted
 alarm pictures are skipped (`alarm_pictures_key_unavailable_total`). Deleting
 the file lifts the pause; prefer entering the label code instead. `GET …/storage` and `GET …/sd-records?date=YYYY-MM-DD` are
 read-only; storage is fetched from EZVIZ at most once per camera every 10
-minutes, so a freshly inserted card may take that long to appear.
+minutes, so a freshly inserted card may take that long to appear. A listed
+interval is saved as a recording with `POST …/recordings` and
+`{"source":"sd","start":…,"end":…}` (ADR-0024): it wakes the camera, is
+refused while live view runs, and fails as `sd_no_recording` when the card
+holds nothing there.
 
 ## Camera controls
 

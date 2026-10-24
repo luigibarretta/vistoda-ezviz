@@ -3,13 +3,17 @@ mod framing;
 mod protobuf;
 mod session;
 
-pub use address::{VtmUrlRequest, build_vtm_url};
+pub use address::{VtmUrlRequest, build_vtm_playback_url, build_vtm_url};
 pub use framing::{VtmPacket, decode_header, encode_packet};
-pub use protobuf::{StreamInfo, build_keepalive, build_stream_info, parse_stream_info};
+pub use protobuf::{
+    StreamInfo, build_keepalive, build_playback_stream_info, build_stream_info, parse_stream_info,
+};
 pub use session::VtmSession;
 
 pub const CHANNEL_MESSAGE: u8 = 0x00;
 pub const CHANNEL_STREAM: u8 = 0x01;
+/// Second media channel some relays use (pyEzvizApi `STREAM_ALT`).
+pub const CHANNEL_STREAM_ALT: u8 = 0x02;
 pub const CHANNEL_ENCRYPTED_MESSAGE: u8 = 0x0a;
 pub const CHANNEL_ENCRYPTED_STREAM: u8 = 0x0b;
 pub const KEEPALIVE_REQUEST: u16 = 0x132;

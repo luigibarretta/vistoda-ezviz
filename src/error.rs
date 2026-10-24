@@ -51,6 +51,9 @@ pub enum BridgeError {
     CameraNotFound,
     #[error("camera is offline")]
     CameraOffline,
+    /// The camera's microSD card holds no recording in the requested interval.
+    #[error("no microSD recording in the requested interval")]
+    SdNoRecording,
     #[error("requested media representation is unavailable")]
     UnsupportedMedia,
     #[error("capacity limit reached: {0}")]
@@ -88,6 +91,7 @@ impl BridgeError {
             Self::EnrollmentExpired => "enrollment_expired",
             Self::CameraNotFound => "camera_not_found",
             Self::CameraOffline => "camera_offline",
+            Self::SdNoRecording => "sd_no_recording",
             Self::UnsupportedMedia => "unsupported_media",
             Self::Capacity(_) => "capacity",
             Self::Recording(_) => "recording",
@@ -118,6 +122,7 @@ impl BridgeError {
             Self::EnrollmentExpired => "enrollment expired or was consumed",
             Self::CameraNotFound => "camera not found",
             Self::CameraOffline => "camera offline",
+            Self::SdNoRecording => "no microSD recording in the requested interval",
             Self::UnsupportedMedia => "requested media representation is unavailable",
             Self::RecordingActive => "recording active",
             Self::UpstreamUnavailable => "upstream media unavailable",
@@ -161,6 +166,7 @@ impl BridgeError {
                 StatusCode::SERVICE_UNAVAILABLE,
                 json!({"error":"camera_offline"}),
             ),
+            Self::SdNoRecording => (StatusCode::NOT_FOUND, json!({"error":"sd_no_recording"})),
             Self::UnsupportedMedia => (StatusCode::CONFLICT, json!({"error":"unsupported_media"})),
             Self::Capacity(_) => (StatusCode::TOO_MANY_REQUESTS, json!({"error":"capacity"})),
             Self::Recording(detail) => (

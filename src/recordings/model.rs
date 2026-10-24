@@ -17,6 +17,14 @@ pub struct RecordingManifest {
     pub bytes: Option<u64>,
     pub sha256: Option<String>,
     pub error_code: Option<String>,
+    /// `sd` for a microSD interval; absent for live captures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// microSD interval in epoch seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sd_start: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sd_end: Option<i64>,
 }
 
 impl RecordingManifest {
@@ -36,7 +44,37 @@ impl RecordingManifest {
             bytes: None,
             sha256: None,
             error_code: None,
+            source: None,
+            sd_start: None,
+            sd_end: None,
         }
+    }
+
+    /// A queued microSD interval `[start, end)` in epoch seconds.
+    #[must_use]
+    pub fn pending_sd(camera: &str, start: i64, end: i64) -> Self {
+        let duration = u64::try_from(end.saturating_sub(start)).unwrap_or(0);
+        Self {
+            source: Some("sd".into()),
+            sd_start: Some(start),
+            sd_end: Some(end),
+            ..Self::pending(camera, duration)
+        }
+    }
+
+    /// Same camera and same requested media: an idempotent retry.
+    #[must_use]
+    pub fn same_request(&self, other: &Self) -> bool {
+        self.camera == other.camera
+            && self.requested_duration_seconds == other.requested_duration_seconds
+            && self.source == other.source
+            && self.sd_start == other.sd_start
+            && self.sd_end == other.sd_end
+    }
+
+    #[must_use]
+    pub fn is_active(&self) -> bool {
+        matches!(self.status.as_str(), "pending" | "recording")
     }
 
     pub fn fail(&mut self, code: &str) {

@@ -218,4 +218,14 @@ impl CameraTransport for EzvizTransport {
         }
         self.stream_clear(camera, cancel, output).await
     }
+
+    async fn stream_sd_playback(
+        &self,
+        camera: &CameraConfig,
+        interval: (&str, &str),
+        cancel: CancellationToken,
+        output: Arc<dyn ChunkConsumer>,
+    ) -> Result<(), BridgeError> {
+        self.stream_sd(camera, interval, cancel, output).await
+    }
 }

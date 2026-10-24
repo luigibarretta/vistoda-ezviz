@@ -12,14 +12,27 @@ pub struct StreamInfo {
 
 #[must_use]
 pub fn build_stream_info(url: &str, redirect_key: Option<&str>) -> Vec<u8> {
-    let version = "v3.6.3.20221124";
+    stream_info(url, redirect_key, "v3.6.3.20221124", None)
+}
+
+/// microSD playback asks with a newer client version and stream-info type 10
+/// in field 8 (pyEzvizApi PR #266).
+#[must_use]
+pub fn build_playback_stream_info(url: &str, redirect_key: Option<&str>) -> Vec<u8> {
+    stream_info(url, redirect_key, "v3.9.0.20251120", Some(10))
+}
+
+fn stream_info(url: &str, key: Option<&str>, version: &str, kind: Option<u64>) -> Vec<u8> {
     let mut output = proto_string(1, url);
-    if let Some(key) = redirect_key {
+    if let Some(key) = key {
         output.extend(proto_string(2, key));
     }
     output.extend(proto_string(3, version));
     output.extend(proto_varint(4, 0));
     output.extend(proto_string(6, version));
+    if let Some(kind) = kind {
+        output.extend(proto_varint(8, kind));
+    }
     output
 }
 

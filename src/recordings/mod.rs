@@ -2,8 +2,11 @@ mod catalog;
 mod job;
 mod model;
 mod recovery;
+mod sd;
+mod writer;
 
 pub use model::RecordingManifest;
+pub use sd::SdInterval;
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -51,7 +54,7 @@ pub struct RecordingManager {
     journal: PathBuf,
     pub(super) hubs: BTreeMap<String, Arc<RawStreamHub>>,
     pub(super) metrics: Metrics,
-    max_duration: u64,
+    pub(super) max_duration: u64,
     pub(super) max_bytes: u64,
     quota_bytes: u64,
     pub(super) state: Mutex<State>,
@@ -104,6 +107,25 @@ impl RecordingManager {
                 self.max_duration
             )));
         }
+        self.enqueue(
+            idempotency_key,
+            RecordingManifest::pending(camera, duration_seconds),
+            job::Job::Live,
+            false,
+        )
+        .await
+    }
+
+    /// Admits a queued manifest once: an idempotent retry returns the
+    /// original, a reused key with another request is refused. `exclusive`
+    /// refuses it while the camera has any active recording.
+    async fn enqueue(
+        self: &Arc<Self>,
+        idempotency_key: &str,
+        manifest: RecordingManifest,
+        job: job::Job,
+        exclusive: bool,
+    ) -> Result<RecordingManifest, BridgeError> {
         if !(8..=128).contains(&idempotency_key.len()) {
             return Err(BridgeError::Recording(
                 "Idempotency-Key must contain 8 to 128 characters".into(),
@@ -123,20 +145,26 @@ impl RecordingManager {
             let existing = state.manifests.get(existing_id).ok_or_else(|| {
                 BridgeError::Recording("recording journal is inconsistent".into())
             })?;
-            if existing.camera != camera || existing.requested_duration_seconds != duration_seconds
-            {
+            if !existing.same_request(&manifest) {
                 return Err(BridgeError::Recording(
                     "Idempotency-Key was reused with a different request".into(),
                 ));
             }
             return Ok(existing.clone());
         }
+        if exclusive
+            && state
+                .manifests
+                .values()
+                .any(|item| item.camera == manifest.camera && item.is_active())
+        {
+            return Err(BridgeError::RecordingActive);
+        }
         if recovery::spool_bytes(&self.directory)? + self.max_bytes > self.quota_bytes {
             return Err(BridgeError::Capacity(
                 "recording quota does not have safe headroom".into(),
             ));
         }
-        let manifest = RecordingManifest::pending(camera, duration_seconds);
         state
             .idempotency
             .insert(idempotency_key.to_owned(), manifest.recording_id.clone());
@@ -150,7 +178,7 @@ impl RecordingManager {
         self.tasks
             .lock()
             .await
-            .spawn(async move { manager.record(&id).await });
+            .spawn(async move { manager.record(&id, job).await });
         Ok(manifest)
     }
 

@@ -29,11 +29,39 @@ struct MockState {
     deletes: AtomicUsize,
     local_commit_seen: AtomicBool,
     expected_local: std::sync::Mutex<Option<PathBuf>>,
+    bodies: std::sync::Mutex<Vec<Value>>,
 }
 
-async fn create(State(state): State<Arc<MockState>>) -> Json<Value> {
+async fn create(
+    State(state): State<Arc<MockState>>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<Value>,
+) -> Json<Value> {
     state.posts.fetch_add(1, Ordering::Relaxed);
-    Json(manifest())
+    let mut value = manifest();
+    if let Some(start) = body.get("start").and_then(Value::as_i64) {
+        value["recording_id"] = json!(format!("00000000-0000-4000-8000-{start:012}"));
+        value["sd_start"] = json!(start);
+        let key = headers.get("idempotency-key").and_then(|v| v.to_str().ok());
+        // The 200 s clip's first attempt finds the camera asleep.
+        if start == 200 && key.is_some_and(|key| key.ends_with("-a0")) {
+            value["status"] = json!("failed");
+            value["error_code"] = json!("camera_offline");
+        }
+    }
+    state
+        .bodies
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .push(body);
+    Json(value)
+}
+
+async fn sd_records() -> Json<Value> {
+    Json(
+        json!({"records":[{"start":200,"end":600,"type":"continuous"},
+                           {"start":100,"end":130,"type":"event"}]}),
+    )
 }
 
 async fn status() -> Json<Value> {
@@ -75,6 +103,7 @@ fn manifest() -> Value {
 async fn server(state: Arc<MockState>) -> (String, tokio::task::JoinHandle<()>) {
     let app = Router::new()
         .route("/v1/cameras/front/recordings", post(create))
+        .route("/v1/cameras/front/sd-records", get(sd_records))
         .route("/v1/recordings/{id}", get(status).delete(acknowledge))
         .route("/v1/recordings/{id}/media", get(media))
         .with_state(state);
@@ -101,6 +130,7 @@ fn request(directory: &Path, base_url: String, key: &str) -> PullRequest {
         base_url,
         camera: "front".into(),
         duration_seconds: 1,
+        sd_interval: None,
         idempotency_key: key.into(),
         token_file,
         destination: directory.join("media"),
@@ -189,3 +219,6 @@ async fn corrupt_local_commit_blocks_remote_ack() {
     assert_eq!(state.deletes.load(Ordering::Relaxed), 0);
     task.abort();
 }
+
+#[path = "scenetrove_sd_tests.rs"]
+mod sd_tests;

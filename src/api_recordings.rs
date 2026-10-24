@@ -35,10 +35,15 @@ pub fn routes() -> Router<Arc<Runtime>> {
         )
 }
 
+/// A live capture (`duration_seconds`) or one microSD interval
+/// (`source: "sd"` with epoch-second `start` and `end`).
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RecordingRequest {
-    duration_seconds: u64,
+    duration_seconds: Option<u64>,
+    source: Option<String>,
+    start: Option<i64>,
+    end: Option<i64>,
 }
 
 #[derive(Default, Deserialize)]
@@ -59,10 +64,47 @@ async fn create_recording(
         .get("idempotency-key")
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default();
-    let manifest = runtime
-        .recordings
-        .start(&camera, payload.duration_seconds, key)
-        .await?;
+    let manifest = match (payload.source.as_deref(), payload.duration_seconds) {
+        (None | Some("live"), Some(duration))
+            if payload.start.is_none() && payload.end.is_none() =>
+        {
+            runtime.recordings.start(&camera, duration, key).await?
+        }
+        (Some("sd"), None) => {
+            let (Some(start), Some(end)) = (payload.start, payload.end) else {
+                return Err(BridgeError::Recording(
+                    "a microSD recording needs start and end".into(),
+                ));
+            };
+            if !runtime.config.cameras.contains_key(&camera) {
+                return Err(BridgeError::CameraNotFound);
+            }
+            // Reject impossible bounds before asking the cloud for the zone.
+            let length = end.checked_sub(start).unwrap_or(0);
+            let limit = runtime.config.max_recording_seconds;
+            if length < 1 || u64::try_from(length).unwrap_or(u64::MAX) > limit {
+                return Err(BridgeError::Recording(format!(
+                    "microSD interval must last between 1 and {limit} seconds"
+                )));
+            }
+            let (begin_local, end_local) = runtime
+                .devices
+                .playback_times(&camera, (start, end))
+                .await?;
+            let interval = crate::recordings::SdInterval {
+                start,
+                end,
+                begin_local,
+                end_local,
+            };
+            runtime.recordings.start_sd(&camera, interval, key).await?
+        }
+        _ => {
+            return Err(BridgeError::Recording(
+                "send duration_seconds for live, or source sd with start and end".into(),
+            ));
+        }
+    };
     Ok((StatusCode::ACCEPTED, Json(manifest)))
 }
 

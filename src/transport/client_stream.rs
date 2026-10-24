@@ -17,7 +17,7 @@ use crate::{
         video::{self, RtpVideo},
         video_pipeline,
     },
-    vtm::{VtmSession, VtmUrlRequest, build_vtm_url},
+    vtm::{VtmSession, VtmUrlRequest, build_vtm_playback_url, build_vtm_url},
 };
 
 impl EzvizTransport {
@@ -29,7 +29,16 @@ impl EzvizTransport {
         output: Arc<dyn ChunkConsumer>,
     ) -> Result<(), BridgeError> {
         let url = self.cloud_stream_url(camera).await?;
-        let mut session = VtmSession::connect(url, timeout_duration(self.timeout_seconds)).await?;
+        let session = VtmSession::connect(url, timeout_duration(self.timeout_seconds)).await?;
+        Self::copy_clear(session, cancel, output).await
+    }
+
+    /// Media of an open clear session, live or microSD playback.
+    pub(super) async fn copy_clear(
+        mut session: VtmSession,
+        cancel: CancellationToken,
+        output: Arc<dyn ChunkConsumer>,
+    ) -> Result<(), BridgeError> {
         // The relay forwards whatever the camera produces: MPEG-PS on some
         // models, RTP on others even with encryption off. The first payload
         // decides; MPEG-PS keeps the untouched pass-through.
@@ -64,6 +73,24 @@ impl EzvizTransport {
         &self,
         camera: &CameraConfig,
     ) -> Result<String, BridgeError> {
+        self.cloud_url(camera, None).await
+    }
+
+    /// `begin`/`end` are camera-local `yyyyMMddTHHmmssZ`.
+    pub(super) async fn cloud_playback_url(
+        &self,
+        camera: &CameraConfig,
+        begin: &str,
+        end: &str,
+    ) -> Result<String, BridgeError> {
+        self.cloud_url(camera, Some((begin, end))).await
+    }
+
+    async fn cloud_url(
+        &self,
+        camera: &CameraConfig,
+        interval: Option<(&str, &str)>,
+    ) -> Result<String, BridgeError> {
         // A VTDU token is one-shot and belongs to the immediately following
         // allocation, so concurrent camera allocations must be serialized.
         let _allocation = self.allocation_lock.lock().await;
@@ -91,7 +118,7 @@ impl EzvizTransport {
             .find_map(|key| server.get(*key).and_then(Value::as_str))
             .ok_or_else(|| BridgeError::Upstream("VTM server host is missing".into()))?;
         let port = value_u16(server.get("port"))?;
-        Ok(build_vtm_url(&VtmUrlRequest {
+        let request = VtmUrlRequest {
             host,
             port,
             serial: &camera.serial,
@@ -100,7 +127,11 @@ impl EzvizTransport {
             biz_url,
             token: &vtdu,
             timestamp_ms: Utc::now().timestamp_millis(),
-        }))
+        };
+        Ok(match interval {
+            None => build_vtm_url(&request),
+            Some((begin, end)) => build_vtm_playback_url(&request, begin, end),
+        })
     }
 
     async fn resource_page(&self, serial: &str, channel: u16) -> Result<Value, BridgeError> {

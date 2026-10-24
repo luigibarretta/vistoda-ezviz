@@ -1,6 +1,6 @@
 # ADR-0020: microSD playback over VTM
 
-- Status: proposed
+- Status: superseded by ADR-0024
 - Date: 2026-10-04
 
 ## Context

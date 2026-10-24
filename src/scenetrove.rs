@@ -15,6 +15,8 @@ use crate::{
     storage::{atomic_write_json, ensure_private_regular},
 };
 
+#[path = "scenetrove_sd.rs"]
+pub mod sd;
 #[path = "scenetrove_transfer.rs"]
 mod transfer;
 use transfer::{acknowledge, bounded_json, write_media};
@@ -24,6 +26,8 @@ pub struct PullRequest {
     pub base_url: String,
     pub camera: String,
     pub duration_seconds: u64,
+    /// One microSD interval in epoch seconds instead of a live capture.
+    pub sd_interval: Option<(i64, i64)>,
     pub idempotency_key: String,
     pub token_file: PathBuf,
     pub destination: PathBuf,
@@ -48,6 +52,8 @@ struct Manifest {
     sha256: Option<String>,
     error_code: Option<String>,
     media_type: String,
+    #[serde(default)]
+    sd_start: Option<i64>,
 }
 
 pub async fn pull(request: PullRequest) -> Result<PullResult, BridgeError> {
@@ -74,7 +80,10 @@ pub async fn pull(request: PullRequest) -> Result<PullResult, BridgeError> {
         .post(create_url)
         .bearer_auth(&token)
         .header("idempotency-key", &request.idempotency_key)
-        .json(&serde_json::json!({"duration_seconds":request.duration_seconds}))
+        .json(&match request.sd_interval {
+            Some((start, end)) => serde_json::json!({"source":"sd","start":start,"end":end}),
+            None => serde_json::json!({"duration_seconds":request.duration_seconds}),
+        })
         .send()
         .await?;
     let mut manifest: Manifest = bounded_json(response).await?;
@@ -113,9 +122,18 @@ pub async fn pull(request: PullRequest) -> Result<PullResult, BridgeError> {
         .completed_at
         .as_deref()
         .ok_or_else(|| BridgeError::Upstream("recording completion time is missing".into()))?;
-    let stamp = DateTime::parse_from_rfc3339(completed)
-        .map_err(|_| BridgeError::Upstream("recording completion time is invalid".into()))?
-        .format("%Y%m%dT%H%M%SZ");
+    // A microSD clip is named after when it was recorded, not downloaded,
+    // so the archive timeline places it correctly.
+    let stamp = match manifest.sd_start {
+        Some(start) => DateTime::from_timestamp(start, 0)
+            .ok_or_else(|| BridgeError::Upstream("microSD start time is invalid".into()))?
+            .format("%Y%m%dT%H%M%SZ")
+            .to_string(),
+        None => DateTime::parse_from_rfc3339(completed)
+            .map_err(|_| BridgeError::Upstream("recording completion time is invalid".into()))?
+            .format("%Y%m%dT%H%M%SZ")
+            .to_string(),
+    };
     let media_format = MediaFormat::from_media_type(&manifest.media_type)?;
     let filename = format!(
         "hiv{stamp}-{}.{}",

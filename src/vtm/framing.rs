@@ -1,6 +1,9 @@
 use crate::{
     error::BridgeError,
-    vtm::{CHANNEL_ENCRYPTED_MESSAGE, CHANNEL_ENCRYPTED_STREAM, CHANNEL_MESSAGE, CHANNEL_STREAM},
+    vtm::{
+        CHANNEL_ENCRYPTED_MESSAGE, CHANNEL_ENCRYPTED_STREAM, CHANNEL_MESSAGE, CHANNEL_STREAM,
+        CHANNEL_STREAM_ALT,
+    },
 };
 
 const MAGIC: u8 = 0x24;
@@ -48,7 +51,11 @@ pub fn decode_header(header: &[u8]) -> Result<(u8, usize, u16, u16), BridgeError
     let channel = header[1];
     if !matches!(
         channel,
-        CHANNEL_MESSAGE | CHANNEL_STREAM | CHANNEL_ENCRYPTED_MESSAGE | CHANNEL_ENCRYPTED_STREAM
+        CHANNEL_MESSAGE
+            | CHANNEL_STREAM
+            | CHANNEL_STREAM_ALT
+            | CHANNEL_ENCRYPTED_MESSAGE
+            | CHANNEL_ENCRYPTED_STREAM
     ) {
         return Err(BridgeError::Upstream("unknown VTM packet channel".into()));
     }

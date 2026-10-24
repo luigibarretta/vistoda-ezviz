@@ -8,9 +8,9 @@ The Rust package and executable stay `ezviz-vtm-bridge` for compatibility; the
 product and repository are Vistoda EZVIZ and `vistoda-ezviz`.
 
 The released scope is snapshots, compatible live streams, finite local
-recordings, alarms, a read-only microSD status and record index, and native
+recordings, alarms, microSD status, record index and saved intervals, and native
 camera controls that replace Home Assistant's separate `ezviz` login. It does not
-provide voice talk or microSD playback, and encrypted-stream compatibility
+provide voice talk, and encrypted-stream compatibility
 varies by model. On Home Assistant OS start with the [setup guide](https://github.com/luigibarretta/vistoda-addons/blob/main/GETTING_STARTED.md).
 
 <p align="center">
@@ -40,8 +40,8 @@ firmware.
 - read-only alarm feed (cursor/long-poll) with bounded history and pictures;
 - automatic encrypted-video detection using an optional private verification
   code or the account's hash-validated cloud copy;
-- read-only microSD status and one-day SD record index (no playback, format or
-  reboot);
+- microSD status, one-day record index and any listed interval saved as a
+  recording (ADR-0024; no format or reboot);
 - verified camera controls (switches, defence, detection mode, sensitivity,
   PTZ step) and the account defence mode, cached 60 s (ADR-0021);
 - finite media-typed MPEG-PS/MPEG-TS recordings with immutable manifests and
@@ -125,8 +125,8 @@ still installed:
    `GET …/storage` reports `ok` and `GET …/sd-records` lists today's clips.
 5. Move alerts to Home Assistant automations on the Vistoda alarm feed, then
    disable phone push notifications in the official app if they duplicate.
-6. Keep the account credentials; enrollment, sharing, talk, microSD playback
-   and recovery still require the official app or its web portal.
+6. Keep the account credentials; enrollment, sharing, talk, microSD
+   formatting and recovery still require the official app or its web portal.
 
 ## HTTP contract
 

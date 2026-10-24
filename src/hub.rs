@@ -171,6 +171,32 @@ impl RawStreamHub {
         *producer = Some(Producer { cancel, task });
     }
 
+    /// True while a live subscriber or upstream producer exists.
+    #[must_use]
+    pub fn is_live(&self) -> bool {
+        !lock(&self.inner.subscribers).is_empty()
+            || lock(&self.inner.producer)
+                .as_ref()
+                .is_some_and(|current| !current.task.is_finished())
+    }
+
+    /// Plays one microSD interval of this hub's camera into `output`; never
+    /// while live view holds the camera (ADR-0024).
+    pub async fn sd_playback(
+        &self,
+        interval: (&str, &str),
+        cancel: CancellationToken,
+        output: Arc<dyn crate::transport::ChunkConsumer>,
+    ) -> Result<(), BridgeError> {
+        if self.is_live() {
+            return Err(BridgeError::Capacity("camera is streaming live".into()));
+        }
+        self.inner
+            .transport
+            .stream_sd_playback(&self.inner.camera, interval, cancel, output)
+            .await
+    }
+
     pub async fn close(&self) {
         self.inner.closed.store(true, Ordering::Release);
         let producer = lock(&self.inner.producer).take();

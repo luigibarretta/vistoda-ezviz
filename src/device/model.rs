@@ -44,6 +44,17 @@ impl DeviceStatus {
             .unwrap_or_else(|| Utc::now().with_timezone(&Local).offset().local_minus_utc());
         local.and_utc().timestamp() - i64::from(offset)
     }
+
+    /// The inverse of [`Self::epoch`]: camera-local `yyyyMMddTHHmmssZ`, the
+    /// relay's playback time format (a wall clock despite the `Z`).
+    #[must_use]
+    pub fn playback_time(&self, epoch: i64) -> Option<String> {
+        let offset = self
+            .utc_offset_seconds
+            .unwrap_or_else(|| Utc::now().with_timezone(&Local).offset().local_minus_utc());
+        chrono::DateTime::from_timestamp(epoch.checked_add(i64::from(offset))?, 0)
+            .map(|wall| wall.format("%Y%m%dT%H%M%SZ").to_string())
+    }
 }
 
 /// Extracts one serial's status from a page-list response, if present.
@@ -226,5 +237,10 @@ mod tests {
             .unwrap_or_else(|error| panic!("{error}"));
         // 12:00 at UTC+02:00 is 10:00 UTC.
         assert_eq!(status.epoch(local), 1_791_108_000);
+        // Playback asks in the same wall clock, with the vendor's literal Z.
+        assert_eq!(
+            status.playback_time(1_791_108_000).as_deref(),
+            Some("20261004T120000Z")
+        );
     }
 }

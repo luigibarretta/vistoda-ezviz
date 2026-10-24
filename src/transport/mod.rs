@@ -16,6 +16,7 @@ mod media;
 mod media_tests;
 mod rtp_audio;
 mod rtp_ts;
+mod sd_playback;
 mod session;
 #[cfg(test)]
 mod session_fake_tests;
@@ -49,6 +50,19 @@ pub trait CameraTransport: Send + Sync {
         cancel: CancellationToken,
         output: Arc<dyn ChunkConsumer>,
     ) -> Result<(), BridgeError>;
+
+    /// One microSD interval from the camera, MPEG-PS or MPEG-TS; `begin` and
+    /// `end` are camera-local `yyyyMMddTHHmmssZ`. Transports without
+    /// microSD access refuse it.
+    async fn stream_sd_playback(
+        &self,
+        _camera: &CameraConfig,
+        _interval: (&str, &str),
+        _cancel: CancellationToken,
+        _output: Arc<dyn ChunkConsumer>,
+    ) -> Result<(), BridgeError> {
+        Err(BridgeError::UnsupportedMedia)
+    }
 }
 
 pub trait ChunkConsumer: Send + Sync {
