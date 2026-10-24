@@ -184,15 +184,15 @@ runtime. The published image digest is the deployment identity.
 Read the family [contribution guide](https://github.com/luigibarretta/vistoda-home-assistant/blob/main/CONTRIBUTING.md)
 first to understand repository ownership and cross-repository release order.
 
-Rust 1.88+ and Docker are required:
+Rust 1.88, Node.js 20+, `cargo-audit` 0.22.2 and Docker are required. Every CI
+check is in [`ci-local.json`](ci-local.json), run by the vendored, pinned
+[`ci-local`](https://git.luigibarretta.com/luigibarretta/repo-tooling) gate; Gitea
+jobs call the same steps with `--ci` (each in exactly one job, per `tests/ci_local_jobs.rs`):
 
 ```bash
-cargo fmt --all -- --check
-cargo clippy --locked --all-targets --all-features -- -D warnings
-cargo test --locked --test loc_budget
-cargo test --locked --all-targets
-cargo audit --deny warnings
-docker build --tag ezviz-vtm-bridge:test .
+node third_party/repo-tooling/ci-local.mjs --quick   # kit, release, secrets, fmt, audit
+node third_party/repo-tooling/ci-local.mjs           # full gate before a push
+docker build --tag ezviz-vtm-bridge:test .           # image and smoke tests: CI only
 ```
 
 Tests are deterministic and require neither network nor EZVIZ credentials. Live canaries are separate and opt-in. CI enforces formatting, strict Clippy,

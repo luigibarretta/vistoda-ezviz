@@ -4,36 +4,42 @@ on:
   push:
     branches: [main]
   pull_request:
+# Checks come from ci-local.json through the vendored ci-local runner, the same
+# entry point used before a push (`node third_party/repo-tooling/ci-local.mjs
+# --quick`, then the full gate). Every manifest step runs in exactly one call
+# below (tests/ci_local_jobs.rs). Plain workflow steps are CI-only: checkouts,
+# the repo-tooling pin check, toolchains, caches, cargo-audit installation and
+# the container image build and smoke tests.
 jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Fetch the exact provider kit from the public source of truth
-        run: |
-          git init .ci/vistoda-provider-kit
-          git -C .ci/vistoda-provider-kit remote add origin https://github.com/luigibarretta/lib-vistoda-provider-kit.git
-          git -C .ci/vistoda-provider-kit fetch --depth=1 origin c09837694fd8816bb0eb478b70553810891c0387
-          git -C .ci/vistoda-provider-kit checkout --detach FETCH_HEAD
-      - name: Verify pinned Vistoda provider kit
-        run: |
-          pin="$(tr -d '[:space:]' < dependencies/vistoda-provider-kit.sha)"
-          test "${pin}" = "c09837694fd8816bb0eb478b70553810891c0387"
-          test "$(git -C .ci/vistoda-provider-kit rev-parse HEAD)" = "${pin}"
-          cmp .ci/vistoda-provider-kit/dist/vistoda-app-bootstrap.sh \
-            packaging/home-assistant/vistoda-app-bootstrap.sh
+      # CI-only: verifies third_party/repo-tooling against a checkout of the
+      # commit pinned in dependencies/repo-tooling.sha.
+      - name: Checkout pinned repository tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: luigibarretta/repo-tooling
+          ref: da53160c52a8cb3f83201e57b333ec399b87bcde
+          path: .ci/repo-tooling
+      - name: Verify pinned repository tooling
+        run: scripts/check-repo-tooling-sync.sh
       # Use a reachable mainline action commit; version branches are rewritten upstream.
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
           toolchain: "1.88.0"
           components: clippy,rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
-      - run: cargo test --locked --test loc_budget
-      - run: cargo test --locked --all-targets
-      - run: cargo install cargo-audit --version 0.22.2 --locked
-      - run: cargo audit --deny warnings
+      - name: Install pinned cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      # The provider-kit step fetches lib-vistoda-provider-kit at
+      # dependencies/vistoda-provider-kit.sha from its public source of truth.
+      - name: Provider kit, release identity, rustfmt and dependency audit
+        run: node third_party/repo-tooling/ci-local.mjs --ci --only provider-kit,release-check,rust-fmt,audit-lockfiles
+      - name: Clippy, ci-local job ownership, LOC budget and Rust tests
+        run: node third_party/repo-tooling/ci-local.mjs --ci --only rust-clippy,ci-local-jobs,loc-budget,rust-test
+      # CI-only from here on: the container image build and its smoke tests.
       - name: Build standalone image at the declared version
         shell: bash
         run: |
@@ -49,22 +55,13 @@ jobs:
           ezviz-vtm-bridge:test --version
       - run: ./tests/smoke-remux.sh ezviz-vtm-bridge:test
   secret-scan:
-    # Mirrors the GitHub secret-scan job. It runs the gitleaks binary directly so
-    # the scan does not depend on GitHub's API; version and checksum are pinned.
+    # Mirrors the GitHub secret-scan job without GitHub's API: the secret-scan
+    # step installs gitleaks at a pinned version and checksum and scans the
+    # full history.
     runs-on: ubuntu-latest
-    env:
-      GITLEAKS_VERSION: "8.30.1"
-      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Install pinned gitleaks
-        run: |
-          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          curl -fsSLo "/tmp/${archive}" \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
-          echo "${GITLEAKS_SHA256}  /tmp/${archive}" | sha256sum -c -
-          tar -xzf "/tmp/${archive}" -C /tmp gitleaks
       - name: Scan the full history for secrets
-        run: /tmp/gitleaks git --redact --no-banner --exit-code 1 .
+        run: node third_party/repo-tooling/ci-local.mjs --ci --only secret-scan

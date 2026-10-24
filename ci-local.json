@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "strict": true,
+  "logMaxKbPerStep": 256,
+  "defaults": {
+    "timeout_s": 600,
+    "env": { "CARGO_INCREMENTAL": "0", "RUSTUP_TOOLCHAIN": "1.88.0" }
+  },
+  "pressure": { "maxSomeAvg60": 20 },
+  "steps": [
+    {
+      "name": "provider-kit",
+      "description": "Pinned lib-vistoda-provider-kit: exact commit, byte-identical bootstrap, kit lifecycle test",
+      "run": ["sh", "scripts/check-provider-kit.sh"],
+      "quick": true,
+      "timeout_s": 300
+    },
+    {
+      "name": "release-check",
+      "description": "Cargo and Docker versions agree; immutable-image publication preflight",
+      "run": "sh scripts/check-release.sh && bash tests/release-preflight.sh",
+      "quick": true,
+      "timeout_s": 120
+    },
+    {
+      "name": "secret-scan",
+      "description": "gitleaks 8.30.1 over the full git history",
+      "run": ["sh", "scripts/secret-scan.sh"],
+      "quick": true,
+      "timeout_s": 600
+    },
+    {
+      "name": "rust-fmt",
+      "description": "rustfmt check",
+      "run": ["cargo", "fmt", "--all", "--", "--check"],
+      "quick": true,
+      "timeout_s": 300
+    },
+    {
+      "name": "audit-lockfiles",
+      "description": "cargo audit --deny warnings on Cargo.lock",
+      "uses": "audit-all-lockfiles",
+      "quick": true,
+      "timeout_s": 900,
+      "with": {
+        "ecosystems": ["cargo"],
+        "cargo": { "args": ["--deny", "warnings"] }
+      }
+    },
+    {
+      "name": "rust-clippy",
+      "description": "clippy, all targets and features, warnings denied",
+      "run": ["cargo", "clippy", "--locked", "--all-targets", "--all-features", "--", "-D", "warnings"],
+      "heavy": true,
+      "timeout_s": 3600
+    },
+    {
+      "name": "ci-local-jobs",
+      "description": "Every manifest step runs in exactly one CI job (tests/ci_local_jobs.rs)",
+      "run": ["cargo", "test", "--locked", "--test", "ci_local_jobs"],
+      "heavy": true,
+      "timeout_s": 1800
+    },
+    {
+      "name": "loc-budget",
+      "description": "250-line budget and no Python sources (tests/loc_budget.rs)",
+      "run": ["cargo", "test", "--locked", "--test", "loc_budget"],
+      "heavy": true,
+      "timeout_s": 1800
+    },
+    {
+      "name": "rust-test",
+      "description": "All Rust targets",
+      "run": ["cargo", "test", "--locked", "--all-targets"],
+      "heavy": true,
+      "timeout_s": 3600
+    }
+  ]
+}

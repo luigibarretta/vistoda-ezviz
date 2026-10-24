@@ -5,7 +5,10 @@ use std::{
 };
 
 const MAX_LINES: usize = 250;
+// `.ci` holds the pinned upstream checkouts CI and ci-local fetch to verify
+// vendored dependencies; they are not maintained here.
 const EXCLUDED_DIRECTORIES: &[&str] = &[
+    ".ci",
     ".git",
     ".mypy_cache",
     ".pytest_cache",

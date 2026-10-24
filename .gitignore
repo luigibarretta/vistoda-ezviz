@@ -5,3 +5,4 @@ data/
 *.ts
 *.jpg
 *.json.tmp
+/.ci/
