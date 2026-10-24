@@ -130,10 +130,9 @@ async fn an_asleep_camera_stops_the_run_without_spending_attempts() {
     }
     // One request per run, always the first clip under its first key.
     assert_eq!(bodies(&state), [(100, 130); MAX_RUNS]);
-    let ledger: Value = serde_json::from_slice(
-        &fs::read(&ledger_path).unwrap_or_else(|error| panic!("{error}")),
-    )
-    .unwrap_or_else(|error| panic!("{error}"));
+    let ledger: Value =
+        serde_json::from_slice(&fs::read(&ledger_path).unwrap_or_else(|error| panic!("{error}")))
+            .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(ledger, json!({"done": [], "attempts": {}}));
     // Once the camera answers, the day is imported in one run.
     state.asleep.store(false, Ordering::Relaxed);
