@@ -39,9 +39,10 @@ with the first usable verification code. `scenetrove-pull --sd-start
 `--sd-day YYYY-MM-DD` imports the day's listed clips not yet in the
 destination's `.sd-ledger.json`, at most `--sd-max-clips` attempts per day
 and run (`0` for no limit); `--sd-day` may be repeated.
-A failed bridge recording keeps its idempotency key, so a clip whose camera
-did not wake is retried on a later run under a new attempt key, at most three
-times; `sd_no_recording` (overwritten on the card) is never retried.
+A failed bridge recording keeps its idempotency key, so a clip whose relay
+failed is retried on a later run under a new attempt key, at most three
+times; `sd_no_recording` (overwritten on the card) is never retried, and
+`camera_offline` (asleep) ends the run without spending an attempt.
 
 ## Consequences
 

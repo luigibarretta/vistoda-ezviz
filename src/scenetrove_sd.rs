@@ -22,6 +22,8 @@ use crate::{
 const LEDGER: &str = ".sd-ledger.json";
 /// Prefix of `pull`'s error for a recording the bridge marked failed.
 const FAILED: &str = "bridge recording failed: ";
+/// `pull`'s error when the camera did not answer (asleep or out of reach).
+const OFFLINE: &str = "bridge recording failed: camera_offline";
 /// Prefix of `pull`'s error when the bridge refuses the request (key reuse).
 const KEY_REFUSED: &str = "bridge returned HTTP 400";
 /// `pull`'s error when the bridge is still working on a recording; the same
@@ -133,7 +135,10 @@ pub async fn pull_day(template: &PullRequest, day: &SdDay) -> Result<Vec<PullRes
             Err(BridgeError::Upstream(detail)) if detail.ends_with("sd_no_recording") => {
                 ledger.finish(&clip);
             }
-            // The camera did not wake or the relay failed: retry on a later
+            // The camera is asleep: later clips would fail the same way, so
+            // stop without spending an attempt; a later run retries.
+            Err(BridgeError::Upstream(detail)) if detail == OFFLINE => break,
+            // The relay failed or the key was refused: retry on a later
             // run with a new key, at most `MAX_ATTEMPTS` times.
             Err(BridgeError::Upstream(detail))
                 if detail.starts_with(FAILED) || detail.starts_with(KEY_REFUSED) =>
@@ -155,6 +160,7 @@ pub async fn pull_day(template: &PullRequest, day: &SdDay) -> Result<Vec<PullRes
         }
         atomic_write_json(&ledger_path, &ledger)?;
     }
+    atomic_write_json(&ledger_path, &ledger)?;
     Ok(pulled)
 }
 

@@ -42,7 +42,7 @@ async fn a_microsd_day_is_imported_once_even_after_a_failed_attempt() {
         first_path = first_path.or_else(|| pulled.first().map(|item| item.path.clone()));
         counts.push(pulled.len());
     }
-    // Run 1 imports the oldest clip; run 2 meets the asleep camera on the long
+    // Run 1 imports the oldest clip; run 2 loses the relay on the long
     // clip and continues; run 3 retries it with a new key; run 4 has nothing.
     assert_eq!(counts, [1, 0, 1, 0]);
     assert_eq!(bodies(&state), [(100, 130), (200, 320), (200, 320)]);
@@ -98,7 +98,7 @@ async fn a_clip_still_recording_is_left_for_the_next_run_without_stopping() {
     let pulled = sd::pull_day(&template, &day(5))
         .await
         .unwrap_or_else(|error| panic!("{error}"));
-    // The 50 s clip outlives the wait; 100 s is imported, 200 s fails asleep.
+    // The 50 s clip outlives the wait; 100 s is imported, 200 s fails.
     assert_eq!(pulled.len(), 1);
     assert_eq!(bodies(&state), [(50, 60), (100, 130), (200, 320)]);
     let ledger: Value = serde_json::from_slice(
@@ -113,3 +113,36 @@ async fn a_clip_still_recording_is_left_for_the_next_run_without_stopping() {
     );
     task.abort();
 }
+
+#[tokio::test]
+async fn an_asleep_camera_stops_the_run_without_spending_attempts() {
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let state = Arc::new(MockState::default());
+    state.asleep.store(true, Ordering::Relaxed);
+    let (base, task) = server(Arc::clone(&state)).await;
+    let template = request(directory.path(), base, "");
+    let ledger_path = directory.path().join("media/.sd-ledger.json");
+    for _ in 0..MAX_RUNS {
+        let pulled = sd::pull_day(&template, &day(5))
+            .await
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert!(pulled.is_empty());
+    }
+    // One request per run, always the first clip under its first key.
+    assert_eq!(bodies(&state), [(100, 130); MAX_RUNS]);
+    let ledger: Value = serde_json::from_slice(
+        &fs::read(&ledger_path).unwrap_or_else(|error| panic!("{error}")),
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(ledger, json!({"done": [], "attempts": {}}));
+    // Once the camera answers, the day is imported in one run.
+    state.asleep.store(false, Ordering::Relaxed);
+    let pulled = sd::pull_day(&template, &day(5))
+        .await
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(pulled.len(), 1);
+    task.abort();
+}
+
+/// More runs than a clip has attempts.
+const MAX_RUNS: usize = 4;

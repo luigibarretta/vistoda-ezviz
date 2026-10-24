@@ -32,6 +32,8 @@ struct MockState {
     bodies: std::sync::Mutex<Vec<Value>>,
     /// Lists a clip at 50 s whose bridge recording never finishes.
     slow_clip: AtomicBool,
+    /// Every microSD recording fails because the camera does not answer.
+    asleep: AtomicBool,
 }
 
 async fn create(
@@ -48,8 +50,12 @@ async fn create(
         if start == 50 {
             value["status"] = json!("recording");
         }
-        // The 200 s clip's first attempt finds the camera asleep.
+        // The 200 s clip's first attempt loses the relay.
         if start == 200 && key.is_some_and(|key| key.ends_with("-a0")) {
+            value["status"] = json!("failed");
+            value["error_code"] = json!("upstream_unavailable");
+        }
+        if state.asleep.load(Ordering::Relaxed) {
             value["status"] = json!("failed");
             value["error_code"] = json!("camera_offline");
         }
