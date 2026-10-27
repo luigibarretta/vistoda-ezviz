@@ -214,6 +214,13 @@ other codes null), `battery.power_source` (0 external, 1 battery) and the raw
 `battery.power_status`; work mode 5/7 use the pyezvizapi names (5 unconfirmed
 upstream). Still unobserved: the code while plugged with a full battery.
 
+Correction (2026-10-27): the 07:31 "charging" sample was taken at 100 %.
+Plugged in after a full discharge, the viewer reported `powerStatus` 1 /
+`powerType` 0 from 2 % upwards (12:30-14:15 CET, about 1 % every 2 minutes),
+which 0.13.0 mapped to an unknown charging state. 0.15.3 maps 1 and 2 to
+charging; 2 is probably "charged on external power" and stays charging
+until a plugged-in full state confirms it.
+
 
 Mounting the viewer on its door base (10:11 CEST) changed no power field:
 mounted on battery and unplugged elsewhere both report 0 / 1. Release 0.13.1

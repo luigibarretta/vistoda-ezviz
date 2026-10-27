@@ -198,8 +198,8 @@ fn switch_names_are_unique_and_stable() {
     }));
 }
 
-/// Values observed on the owned door viewer on 2026-10-23 (0.12.0 probe),
-/// sent as strings inside JSON-encoded optionals.
+/// Values observed on the owned door viewer on 2026-10-23 and 2026-10-27
+/// (0.12.0 probe), sent as strings inside JSON-encoded optionals.
 #[test]
 fn power_state_follows_the_observed_door_viewer_codes() {
     let status = |power_status: &str, power_type: &str| {
@@ -217,9 +217,18 @@ fn power_state_follows_the_observed_door_viewer_codes() {
         (unplugged.charging, unplugged.power_source),
         (Some(false), Some("battery"))
     );
-    let unknown = super::fields::battery(&status("1", "9")).unwrap_or_else(|| panic!("battery"));
+    let recharging = super::fields::battery(&status("1", "0")).unwrap_or_else(|| panic!("battery"));
+    assert_eq!(
+        (
+            recharging.charging,
+            recharging.power_source,
+            recharging.power_status
+        ),
+        (Some(true), Some("external"), Some(1))
+    );
+    let unknown = super::fields::battery(&status("7", "9")).unwrap_or_else(|| panic!("battery"));
     assert_eq!(
         (unknown.charging, unknown.power_source, unknown.power_status),
-        (None, None, Some(1))
+        (None, None, Some(7))
     );
 }

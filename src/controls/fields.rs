@@ -88,9 +88,11 @@ pub(super) fn ptz(device: &Value) -> bool {
 
 /// Battery level, work mode and power state from `STATUS.optionals`.
 ///
-/// `powerStatus`/`powerType` were observed on an owned door viewer on
-/// 2026-10-23 (0.12.0 power probe): charging 2/0, unplugged 0/1, reported
-/// within about a minute of the change.
+/// `powerStatus`/`powerType` were observed on an owned door viewer (0.12.0
+/// power probe): plugged in at 100 % 2/0 and unplugged 0/1 on 2026-10-23,
+/// plugged in and charging from 2 % 1/0 on 2026-10-27; reported within about
+/// a minute of the change. Code 2 may mean "charged on external power"; it
+/// stays charging until a plugged-in full state is told apart.
 pub(super) fn battery(status: &Value) -> Option<Battery> {
     let optionals = optionals(status);
     let percent = optionals
@@ -103,7 +105,7 @@ pub(super) fn battery(status: &Value) -> Option<Battery> {
         .and_then(work_mode);
     let power_status = optionals.get("powerStatus").and_then(int);
     let charging = power_status.and_then(|code| match code {
-        2 => Some(true),
+        1 | 2 => Some(true),
         0 => Some(false),
         _ => None,
     });
