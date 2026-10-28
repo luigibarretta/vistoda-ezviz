@@ -51,9 +51,9 @@ pub struct Sensitivity {
 pub struct Battery {
     pub percent: Option<i64>,
     pub work_mode: Option<&'static str>,
-    /// `STATUS.optionals.powerStatus`: 1 or 2 on external power (1 seen
-    /// while recharging, 2 at 100 %), 0 otherwise; any other code is
-    /// reported as unknown (`None`).
+    /// `STATUS.optionals.powerStatus`: 1 while charging; 2 (full on external
+    /// power) and 0 (on battery) are not charging; any other code is reported
+    /// as unknown (`None`).
     pub charging: Option<bool>,
     /// `STATUS.optionals.powerType`: 0 external power, 1 battery.
     pub power_source: Option<&'static str>,

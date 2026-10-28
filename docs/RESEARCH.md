@@ -221,6 +221,11 @@ which 0.13.0 mapped to an unknown charging state. 0.15.3 maps 1 and 2 to
 charging; 2 is probably "charged on external power" and stays charging
 until a plugged-in full state confirms it.
 
+Confirmed the same day: still plugged in, the code moved from 1 at 99 % to
+2 at 100 % (17:17 CET) and to 0 / 1 when unplugged (18:11 CET). 2 is "full
+on external power", so 0.15.4 reports it as not charging, with power source
+external.
+
 
 Mounting the viewer on its door base (10:11 CEST) changed no power field:
 mounted on battery and unplugged elsewhere both report 0 / 1. Release 0.13.1

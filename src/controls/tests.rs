@@ -198,8 +198,9 @@ fn switch_names_are_unique_and_stable() {
     }));
 }
 
-/// Values observed on the owned door viewer on 2026-10-23 and 2026-10-27
-/// (0.12.0 probe), sent as strings inside JSON-encoded optionals.
+/// Values observed on the owned door viewer on 2026-10-27 (0.12.0 probe):
+/// 1 charging, 2 full on external power, 0 on battery; sent as strings
+/// inside JSON-encoded optionals.
 #[test]
 fn power_state_follows_the_observed_door_viewer_codes() {
     let status = |power_status: &str, power_type: &str| {
@@ -207,11 +208,11 @@ fn power_state_follows_the_observed_door_viewer_codes() {
                                "powerStatus": power_status, "powerType": power_type});
         json!({"optionals": optionals.to_string()})
     };
-    let charging = super::fields::battery(&status("2", "0")).unwrap_or_else(|| panic!("battery"));
-    assert_eq!(charging.charging, Some(true));
-    assert_eq!(charging.power_source, Some("external"));
-    assert_eq!(charging.power_status, Some(2));
-    assert_eq!(charging.work_mode, Some("hibernate"));
+    let full = super::fields::battery(&status("2", "0")).unwrap_or_else(|| panic!("battery"));
+    assert_eq!(full.charging, Some(false));
+    assert_eq!(full.power_source, Some("external"));
+    assert_eq!(full.power_status, Some(2));
+    assert_eq!(full.work_mode, Some("hibernate"));
     let unplugged = super::fields::battery(&status("0", "1")).unwrap_or_else(|| panic!("battery"));
     assert_eq!(
         (unplugged.charging, unplugged.power_source),
