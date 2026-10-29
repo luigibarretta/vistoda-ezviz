@@ -11,6 +11,7 @@ use super::{
 };
 
 mod feed;
+mod limits;
 mod poller;
 
 pub(super) const JPEG: &[u8] = &[

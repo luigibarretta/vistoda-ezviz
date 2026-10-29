@@ -11,7 +11,7 @@ use super::{
     feed::{camera, record},
 };
 use crate::{
-    alarms::{AlarmFeed, AlarmSource, fetch},
+    alarms::{AlarmFeed, AlarmLimits, AlarmSource, fetch},
     config::CameraConfig,
     error::BridgeError,
     metrics::Metrics,
@@ -76,7 +76,12 @@ fn page(indices: &[i64], has_next: bool) -> Value {
 
 fn feed(directory: &std::path::Path) -> Arc<AlarmFeed> {
     let cameras = BTreeMap::from([("front".to_owned(), camera("CAM1"))]);
-    AlarmFeed::load(directory, &cameras, Metrics::default())
+    AlarmFeed::load(
+        directory,
+        &cameras,
+        Metrics::default(),
+        AlarmLimits::default(),
+    )
 }
 
 async fn eventually(feed: &AlarmFeed, head: u64) {

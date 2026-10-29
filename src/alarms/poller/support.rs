@@ -20,7 +20,7 @@ pub(super) async fn known_ids(
             newest = newest.max(history.newest_occurred_at());
             known.extend(
                 history
-                    .recent(crate::alarms::MAX_EVENTS)
+                    .recent(history.limit())
                     .into_iter()
                     .map(|e| e.record.id),
             );

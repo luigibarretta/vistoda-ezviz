@@ -14,7 +14,7 @@ pub use crypto::{PictureError, decode_picture, decode_with_keys, decrypt_checksu
 pub use model::{
     AlarmRecord, DeviceSummary, ParsedMessage, category, is_token, parse_list, parse_summary,
 };
-pub use store::MAX_EVENTS;
+pub use store::DEFAULT_HISTORY_LIMIT;
 
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 
@@ -32,8 +32,23 @@ use store::CameraHistory;
 pub const MAX_BATCH: usize = 50;
 /// Longest accepted long-poll wait.
 pub const MAX_WAIT_SECONDS: u64 = 25;
-/// Picture bytes shared by all cameras.
-pub const TOTAL_PICTURE_BYTES: u64 = 256 * 1024 * 1024;
+/// How much alarm history the feed keeps.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AlarmLimits {
+    /// Alarms kept per camera.
+    pub history: usize,
+    /// Picture bytes shared by all cameras, split evenly.
+    pub picture_bytes: u64,
+}
+
+impl Default for AlarmLimits {
+    fn default() -> Self {
+        Self {
+            history: DEFAULT_HISTORY_LIMIT,
+            picture_bytes: 256 * 1024 * 1024,
+        }
+    }
+}
 
 /// Read-only EZVIZ unified-message operations used by the poller.
 #[async_trait]
@@ -98,12 +113,14 @@ impl AlarmFeed {
         directory: &std::path::Path,
         cameras: &BTreeMap<String, CameraConfig>,
         metrics: Metrics,
+        limits: AlarmLimits,
     ) -> Arc<Self> {
-        let budget = TOTAL_PICTURE_BYTES / u64::try_from(cameras.len().max(1)).unwrap_or(1);
+        let budget = limits.picture_bytes / u64::try_from(cameras.len().max(1)).unwrap_or(1);
         let cameras = cameras
             .iter()
             .map(|(alias, config)| {
-                let history = CameraHistory::load(&directory.join(alias), config, budget);
+                let history =
+                    CameraHistory::load(&directory.join(alias), config, budget, limits.history);
                 let (head, _receiver) = watch::channel(history.head());
                 let slot = CameraSlot {
                     config: config.clone(),

@@ -1,7 +1,7 @@
 //! Bounded, persisted per-camera alarm history with process-local sequences.
 
 use std::{
-    collections::{BTreeSet, VecDeque},
+    collections::{BTreeSet, HashSet, VecDeque},
     path::PathBuf,
 };
 
@@ -14,8 +14,8 @@ use crate::{config::CameraConfig, error::BridgeError, storage::atomic_write_json
 #[path = "store_read.rs"]
 mod read;
 
-/// Retained alarms (and therefore pictures) per camera.
-pub const MAX_EVENTS: usize = 200;
+/// Alarms (and therefore pictures) kept per camera unless configured.
+pub const DEFAULT_HISTORY_LIMIT: usize = 200;
 const SCHEMA_VERSION: u8 = 1;
 
 #[derive(Deserialize, Serialize)]
@@ -44,9 +44,12 @@ pub struct CameraHistory {
     binding: String,
     pub(super) pictures: PictureDir,
     events: VecDeque<Entry>,
+    /// Ids of `events`, so duplicate checks stay cheap at the largest limit.
+    index: HashSet<String>,
     head: u64,
     floor: u64,
     picture_budget: u64,
+    limit: usize,
 }
 
 /// Opaque binding so a re-pointed alias never inherits another camera's alarms.
@@ -58,7 +61,12 @@ fn binding(camera: &CameraConfig) -> String {
 
 impl CameraHistory {
     /// Loads persisted history; corrupt or foreign state starts empty.
-    pub fn load(directory: &std::path::Path, camera: &CameraConfig, picture_budget: u64) -> Self {
+    pub fn load(
+        directory: &std::path::Path,
+        camera: &CameraConfig,
+        picture_budget: u64,
+        limit: usize,
+    ) -> Self {
         let file = directory.join("history.json");
         let pictures = PictureDir::new(directory.join("pictures"));
         let binding = binding(camera);
@@ -71,12 +79,14 @@ impl CameraHistory {
             binding,
             pictures,
             events: VecDeque::new(),
+            index: HashSet::new(),
             head: 0,
             floor: 0,
             picture_budget,
+            limit,
         };
         let records = stored.map(|value| value.events).unwrap_or_default();
-        let skip = records.len().saturating_sub(MAX_EVENTS);
+        let skip = records.len().saturating_sub(limit);
         for mut record in records.into_iter().skip(skip) {
             if !super::model::is_token(&record.id) || history.knows(&record.id) {
                 continue;
@@ -105,12 +115,14 @@ impl CameraHistory {
 
     fn push(&mut self, record: AlarmRecord) {
         self.head += 1;
+        self.index.insert(record.id.clone());
         self.events.push_back(Entry {
             sequence: self.head,
             record,
         });
-        while self.events.len() > MAX_EVENTS {
+        while self.events.len() > self.limit {
             if let Some(evicted) = self.events.pop_front() {
+                self.index.remove(&evicted.record.id);
                 self.pictures.remove(&evicted.record.id);
             }
         }
@@ -118,7 +130,17 @@ impl CameraHistory {
 
     #[must_use]
     pub fn knows(&self, id: &str) -> bool {
-        self.events.iter().any(|entry| entry.record.id == id)
+        self.index.contains(id)
+    }
+
+    /// A full history ignores alarms older than its oldest one: they were
+    /// evicted (or would be at once) and must not come back as new.
+    fn predates_full_history(&self, record: &AlarmRecord) -> bool {
+        self.events.len() >= self.limit
+            && self
+                .events
+                .front()
+                .is_some_and(|oldest| record.occurred_at < oldest.record.occurred_at)
     }
 
     #[must_use]
@@ -144,7 +166,10 @@ impl CameraHistory {
     ) -> Result<InsertOutcome, BridgeError> {
         let mut outcome = InsertOutcome::default();
         for (mut record, jpeg) in batch {
-            if !super::model::is_token(&record.id) || self.knows(&record.id) {
+            if !super::model::is_token(&record.id)
+                || self.knows(&record.id)
+                || self.predates_full_history(&record)
+            {
                 continue;
             }
             record.has_picture = false;

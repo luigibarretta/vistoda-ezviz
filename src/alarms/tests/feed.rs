@@ -2,7 +2,7 @@
 
 use super::JPEG;
 use crate::{
-    alarms::{AlarmRecord, MAX_EVENTS, store::CameraHistory},
+    alarms::{AlarmRecord, DEFAULT_HISTORY_LIMIT, store::CameraHistory},
     config::CameraConfig,
 };
 
@@ -36,7 +36,7 @@ fn sequences(entries: &[crate::alarms::store::Entry]) -> Vec<u64> {
 fn history_round_trips_and_rejects_foreign_bindings() {
     let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
     let path = directory.path().join("front");
-    let mut history = CameraHistory::load(&path, &camera("CAM1"), 1 << 20);
+    let mut history = CameraHistory::load(&path, &camera("CAM1"), 1 << 20, DEFAULT_HISTORY_LIMIT);
     let batch = vec![
         (record("a", 1), Some(JPEG.to_vec())),
         (record("b", 2), None),
@@ -45,7 +45,7 @@ fn history_round_trips_and_rejects_foreign_bindings() {
         .insert(batch, true)
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!((outcome.inserted, outcome.pictures_stored), (2, 1));
-    let reloaded = CameraHistory::load(&path, &camera("CAM1"), 1 << 20);
+    let reloaded = CameraHistory::load(&path, &camera("CAM1"), 1 << 20, DEFAULT_HISTORY_LIMIT);
     let records: Vec<_> = reloaded.recent(10).into_iter().map(|e| e.record).collect();
     assert_eq!(records.len(), 2);
     assert!(records[0].has_picture && !records[1].has_picture);
@@ -54,7 +54,7 @@ fn history_round_trips_and_rejects_foreign_bindings() {
         "reloaded history is not replayed"
     );
     assert!(path.join("pictures/a.jpg").is_file());
-    let foreign = CameraHistory::load(&path, &camera("CAM2"), 1 << 20);
+    let foreign = CameraHistory::load(&path, &camera("CAM2"), 1 << 20, DEFAULT_HISTORY_LIMIT);
     assert_eq!(foreign.head(), 0);
     assert!(!path.join("pictures/a.jpg").exists());
 }
@@ -64,15 +64,15 @@ fn history_and_pictures_are_bounded() {
     let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
     let path = directory.path().join("front");
     let budget = 3 * JPEG.len() as u64;
-    let mut history = CameraHistory::load(&path, &camera("CAM1"), budget);
-    let batch = (0..MAX_EVENTS + 5)
+    let mut history = CameraHistory::load(&path, &camera("CAM1"), budget, DEFAULT_HISTORY_LIMIT);
+    let batch = (0..DEFAULT_HISTORY_LIMIT + 5)
         .map(|index| (record(&format!("e{index}"), 10), Some(JPEG.to_vec())))
         .collect();
     history
         .insert(batch, true)
         .unwrap_or_else(|error| panic!("{error}"));
     let recent = history.recent(usize::MAX);
-    assert_eq!(recent.len(), MAX_EVENTS);
+    assert_eq!(recent.len(), DEFAULT_HISTORY_LIMIT);
     assert_eq!(recent[0].record.id, "e5");
     let with_pictures = recent
         .iter()
@@ -82,7 +82,7 @@ fn history_and_pictures_are_bounded() {
     let files = std::fs::read_dir(path.join("pictures")).map_or(0, Iterator::count);
     assert_eq!(files, 3);
     assert!(
-        path.join(format!("pictures/e{}.jpg", MAX_EVENTS + 4))
+        path.join(format!("pictures/e{}.jpg", DEFAULT_HISTORY_LIMIT + 4))
             .is_file()
     );
 }
@@ -90,7 +90,12 @@ fn history_and_pictures_are_bounded() {
 #[test]
 fn cursor_reads_skip_primed_history_and_answer_stale_cursors() {
     let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-    let mut history = CameraHistory::load(&directory.path().join("c"), &camera("CAM1"), 1 << 20);
+    let mut history = CameraHistory::load(
+        &directory.path().join("c"),
+        &camera("CAM1"),
+        1 << 20,
+        DEFAULT_HISTORY_LIMIT,
+    );
     let primed = vec![(record("p1", 1), None), (record("p2", 2), None)];
     history
         .insert(primed, false)
@@ -122,7 +127,12 @@ fn cursor_reads_skip_primed_history_and_answer_stale_cursors() {
 #[test]
 fn history_pages_walk_back_through_every_retained_alarm() {
     let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-    let mut history = CameraHistory::load(&directory.path().join("c"), &camera("CAM1"), 1 << 20);
+    let mut history = CameraHistory::load(
+        &directory.path().join("c"),
+        &camera("CAM1"),
+        1 << 20,
+        DEFAULT_HISTORY_LIMIT,
+    );
     let primed = vec![(record("p1", 1), None), (record("p2", 2), None)];
     history
         .insert(primed, false)

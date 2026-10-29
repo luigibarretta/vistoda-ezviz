@@ -3,6 +3,18 @@
 use super::{CameraHistory, Entry};
 
 impl CameraHistory {
+    /// Alarms kept for this camera.
+    #[must_use]
+    pub const fn limit(&self) -> usize {
+        self.limit
+    }
+
+    /// Picture bytes this camera may keep.
+    #[must_use]
+    pub const fn picture_budget(&self) -> u64 {
+        self.picture_budget
+    }
+
     /// The newest `limit` alarms in ascending sequence order.
     #[must_use]
     pub fn recent(&self, limit: usize) -> Vec<Entry> {
