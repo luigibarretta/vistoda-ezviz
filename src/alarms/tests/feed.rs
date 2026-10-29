@@ -118,3 +118,33 @@ fn cursor_reads_skip_primed_history_and_answer_stale_cursors() {
     assert_eq!(next, 4);
     assert_eq!(sequences(&history.recent(3)), vec![2, 3, 4]);
 }
+
+#[test]
+fn history_pages_walk_back_through_every_retained_alarm() {
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let mut history = CameraHistory::load(&directory.path().join("c"), &camera("CAM1"), 1 << 20);
+    let primed = vec![(record("p1", 1), None), (record("p2", 2), None)];
+    history
+        .insert(primed, false)
+        .unwrap_or_else(|error| panic!("{error}"));
+    let live = (3..=5)
+        .map(|at| (record(&format!("l{at}"), at), None))
+        .collect();
+    history
+        .insert(live, true)
+        .unwrap_or_else(|error| panic!("{error}"));
+
+    let (events, older) = history.page(None, 2);
+    assert_eq!((sequences(&events), older), (vec![4, 5], Some(4)));
+    let (events, older) = history.page(older, 2);
+    assert_eq!((sequences(&events), older), (vec![2, 3], Some(2)));
+    let (events, older) = history.page(older, 2);
+    assert_eq!(
+        (sequences(&events), older),
+        (vec![1], None),
+        "history paging reaches primed alarms below the replay floor"
+    );
+    assert!(history.page(Some(1), 2).0.is_empty());
+    let (events, older) = history.page(Some(99), 50);
+    assert_eq!((sequences(&events), older), (vec![1, 2, 3, 4, 5], None));
+}

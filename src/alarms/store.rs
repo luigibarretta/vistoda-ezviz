@@ -11,6 +11,9 @@ use sha2::{Digest, Sha256};
 use super::{model::AlarmRecord, pictures::PictureDir};
 use crate::{config::CameraConfig, error::BridgeError, storage::atomic_write_json};
 
+#[path = "store_read.rs"]
+mod read;
+
 /// Retained alarms (and therefore pictures) per camera.
 pub const MAX_EVENTS: usize = 200;
 const SCHEMA_VERSION: u8 = 1;
@@ -198,33 +201,6 @@ impl CameraHistory {
                     .collect(),
             },
         )
-    }
-
-    /// The newest `limit` alarms in ascending sequence order.
-    #[must_use]
-    pub fn recent(&self, limit: usize) -> Vec<Entry> {
-        let skip = self.events.len().saturating_sub(limit);
-        self.events.iter().skip(skip).cloned().collect()
-    }
-
-    /// Live alarms strictly after `after` (never at or below the replay
-    /// floor) and the cursor to send next. A cursor ahead of the head (for
-    /// example from another generation) is answered with the current head.
-    #[must_use]
-    pub fn after(&self, after: u64, limit: usize) -> (Vec<Entry>, u64) {
-        if after > self.head {
-            return (Vec::new(), self.head);
-        }
-        let cursor = after.max(self.floor);
-        let events: Vec<Entry> = self
-            .events
-            .iter()
-            .filter(|entry| entry.sequence > cursor)
-            .take(limit)
-            .cloned()
-            .collect();
-        let next = events.last().map_or(cursor, |entry| entry.sequence);
-        (events, next)
     }
 
     pub fn picture_bytes(&self, id: &str) -> Option<u64> {

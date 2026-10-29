@@ -5,6 +5,7 @@ mod fetch;
 mod model;
 mod pictures;
 mod poller;
+mod read;
 pub(crate) mod store;
 #[cfg(test)]
 mod tests;
@@ -70,6 +71,10 @@ pub struct AlarmBatch {
     pub generation: Uuid,
     pub next_sequence: u64,
     pub events: Vec<AlarmEvent>,
+    /// `before` cursor of the next older history page; set on history reads
+    /// (no cursor or `before`) while older retained alarms remain.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub older: Option<u64>,
 }
 
 pub(crate) struct CameraSlot {
@@ -165,62 +170,6 @@ impl AlarmFeed {
         let outcome = history.insert(batch, live)?;
         slot.head.send_replace(history.head());
         Ok(outcome)
-    }
-
-    /// Cursor read: `after = None` returns recent history without waiting;
-    /// otherwise waits up to `wait` for alarms strictly after the cursor.
-    pub async fn batch(
-        &self,
-        camera: &str,
-        after: Option<u64>,
-        wait: Duration,
-    ) -> Result<AlarmBatch, BridgeError> {
-        let slot = self
-            .cameras
-            .get(camera)
-            .ok_or(BridgeError::CameraNotFound)?;
-        let Some(after) = after else {
-            let history = slot.history.lock().await;
-            return Ok(self.envelope(camera, history.head(), history.recent(MAX_BATCH)));
-        };
-        let deadline =
-            tokio::time::Instant::now() + wait.min(Duration::from_secs(MAX_WAIT_SECONDS));
-        let mut receiver = slot.head.subscribe();
-        loop {
-            let (events, next) = slot.history.lock().await.after(after, MAX_BATCH);
-            let stale = next < after;
-            if !events.is_empty() || stale || tokio::time::Instant::now() >= deadline {
-                return Ok(self.envelope(camera, next, events));
-            }
-            tokio::select! {
-                () = self.shutdown.cancelled() => return Ok(self.envelope(camera, next, events)),
-                changed = tokio::time::timeout_at(deadline, receiver.changed()) => {
-                    if !matches!(changed, Ok(Ok(()))) {
-                        return Ok(self.envelope(camera, next, events));
-                    }
-                }
-            }
-        }
-    }
-
-    fn envelope(&self, camera: &str, next: u64, events: Vec<store::Entry>) -> AlarmBatch {
-        AlarmBatch {
-            camera: camera.to_owned(),
-            generation: self.generation,
-            next_sequence: next,
-            events: events
-                .into_iter()
-                .map(|entry| AlarmEvent {
-                    sequence: entry.sequence,
-                    id: entry.record.id,
-                    occurred_at: entry.record.occurred_at,
-                    alarm_type: entry.record.alarm_type,
-                    category: entry.record.category,
-                    title: entry.record.title,
-                    has_picture: entry.record.has_picture,
-                })
-                .collect(),
-        }
     }
 
     /// Returns a stored JPEG for a retained alarm.

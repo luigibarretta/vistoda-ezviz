@@ -70,6 +70,10 @@ async fn alarm_routes_require_authentication_and_validate_queries() {
         "/v1/cameras/front/alarms?wait=26",
         "/v1/cameras/front/alarms?after=-1",
         "/v1/cameras/front/alarms?after=1&extra=1",
+        "/v1/cameras/front/alarms?before=0",
+        "/v1/cameras/front/alarms?before=-1",
+        "/v1/cameras/front/alarms?before=5&after=1",
+        "/v1/cameras/front/alarms?before=5&wait=1",
     ] {
         let response = get(&system, path).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
@@ -77,6 +81,14 @@ async fn alarm_routes_require_authentication_and_validate_queries() {
     }
     let missing = get(&system, "/v1/cameras/unknown/alarms").await;
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    let missing_history = get(&system, "/v1/cameras/unknown/alarms?before=5").await;
+    assert_eq!(missing_history.status(), StatusCode::NOT_FOUND);
+    let history = get(&system, "/v1/cameras/front/alarms?before=5").await;
+    assert_eq!(history.status(), StatusCode::OK);
+    assert_eq!(history.headers()[header::CACHE_CONTROL], "no-store");
+    let body = json(history).await;
+    assert_eq!(body["events"], json!([]));
+    assert!(body.get("older").is_none(), "no older page without history");
     let empty = get(&system, "/v1/cameras/front/alarms?after=0&wait=0").await;
     assert_eq!(empty.status(), StatusCode::OK);
     assert_eq!(empty.headers()[header::CACHE_CONTROL], "no-store");

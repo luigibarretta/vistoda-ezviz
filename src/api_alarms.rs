@@ -33,6 +33,7 @@ pub fn routes() -> Router<Arc<Runtime>> {
 struct AlarmQuery {
     after: Option<u64>,
     wait: Option<u64>,
+    before: Option<u64>,
 }
 
 async fn list_alarms(
@@ -41,8 +42,21 @@ async fn list_alarms(
     query: Result<Query<AlarmQuery>, axum::extract::rejection::QueryRejection>,
 ) -> Result<Response, BridgeError> {
     let Ok(Query(query)) = query else {
-        return Ok(bad_request("after and wait must be non-negative integers"));
+        return Ok(bad_request(
+            "after, wait and before must be non-negative integers",
+        ));
     };
+    if let Some(before) = query.before {
+        if query.after.is_some() || query.wait.is_some() {
+            return Ok(bad_request("before cannot be combined with after or wait"));
+        }
+        if before == 0 {
+            return Ok(bad_request("before must be a sequence of at least 1"));
+        }
+        let mut result = Json(runtime.alarms.history(&camera, before).await?).into_response();
+        no_store(result.headers_mut());
+        return Ok(result);
+    }
     let wait = query.wait.unwrap_or(0);
     if wait > MAX_WAIT_SECONDS {
         return Ok(bad_request("wait must be between 0 and 25 seconds"));
