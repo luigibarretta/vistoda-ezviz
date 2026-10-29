@@ -103,10 +103,7 @@ impl Runtime {
             &crate::alarms::data_directory(&config.data_dir),
             &config.cameras,
             metrics.clone(),
-            crate::alarms::AlarmLimits {
-                history: config.alarm_history_limit,
-                picture_bytes: config.alarm_picture_budget_bytes,
-            },
+            config.alarm_limits,
         );
         let devices = DeviceService::new(&config.cameras);
         let controls = ControlService::new(&config.cameras, &metrics);

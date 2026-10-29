@@ -38,3 +38,8 @@ fn out_of_range_values_are_clamped() {
     assert_eq!(bounded(Some("100000"), 256, 64, 2048), (2048, true));
     assert_eq!(bounded(Some("2000"), 200, 50, 2000), (2000, false));
 }
+
+#[test]
+fn alarm_limits_default_to_the_feed_defaults() {
+    assert_eq!(alarm_limits(), crate::alarms::AlarmLimits::default());
+}

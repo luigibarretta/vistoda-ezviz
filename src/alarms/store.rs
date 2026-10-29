@@ -102,6 +102,15 @@ impl CameraHistory {
         let keep = history.ids();
         history.pictures.remove_orphans(&keep);
         history.enforce_picture_budget();
+        // A lowered limit: the trimmed alarms must leave the file (and backups).
+        if skip > 0 {
+            if let Err(error) = history.persist() {
+                tracing::warn!(
+                    error_type = error.diagnostic_code(),
+                    "alarm history rewrite failed"
+                );
+            }
+        }
         history
     }
 

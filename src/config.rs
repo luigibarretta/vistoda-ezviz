@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, env, path::PathBuf};
 
 use serde::Deserialize;
 
-use crate::error::BridgeError;
+use crate::{alarms::AlarmLimits, error::BridgeError};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -46,10 +46,8 @@ pub struct BridgeConfig {
     pub snapshot_stale_seconds: u64,
     /// Alarm summary poll interval; zero disables the alarm feed poller.
     pub alarm_poll_seconds: u64,
-    /// Alarms kept per camera (oldest evicted first, with their pictures).
-    pub alarm_history_limit: usize,
-    /// Picture storage for all cameras together, split evenly per camera.
-    pub alarm_picture_budget_bytes: u64,
+    /// Alarm history kept per camera and picture storage for all cameras.
+    pub alarm_limits: AlarmLimits,
 }
 
 impl BridgeConfig {
@@ -99,20 +97,7 @@ impl BridgeConfig {
             snapshot_cache_seconds: integer("EZVIZ_BRIDGE_SNAPSHOT_CACHE", 3, 0, 300)?,
             snapshot_stale_seconds: integer("EZVIZ_BRIDGE_SNAPSHOT_STALE", 900, 30, 3600)?,
             alarm_poll_seconds: alarm_interval()?,
-            alarm_history_limit: usize::try_from(clamped(
-                "EZVIZ_BRIDGE_ALARM_HISTORY_LIMIT",
-                200,
-                50,
-                2000,
-            ))
-            .map_err(|_| BridgeError::Configuration("alarm history limit is invalid".into()))?,
-            alarm_picture_budget_bytes: clamped(
-                "EZVIZ_BRIDGE_ALARM_PICTURE_BUDGET_MIB",
-                256,
-                64,
-                2048,
-            ) * 1024
-                * 1024,
+            alarm_limits: alarm_limits(),
         })
     }
 }
@@ -161,6 +146,28 @@ fn alarm_interval() -> Result<u64, BridgeError> {
         ));
     }
     Ok(seconds)
+}
+
+/// Alarm retention from the environment; defaults are `AlarmLimits::default()`.
+fn alarm_limits() -> AlarmLimits {
+    const MIB: u64 = 1024 * 1024;
+    let defaults = AlarmLimits::default();
+    let history = clamped(
+        "EZVIZ_BRIDGE_ALARM_HISTORY_LIMIT",
+        defaults.history as u64,
+        50,
+        2000,
+    );
+    let picture_mib = clamped(
+        "EZVIZ_BRIDGE_ALARM_PICTURE_BUDGET_MIB",
+        defaults.picture_bytes / MIB,
+        64,
+        2048,
+    );
+    AlarmLimits {
+        history: usize::try_from(history).unwrap_or(defaults.history),
+        picture_bytes: picture_mib * MIB,
+    }
 }
 
 /// Reads a bounded integer that must never stop startup: a missing value

@@ -137,8 +137,7 @@ impl TestSystem {
             snapshot_cache_seconds: 3,
             snapshot_stale_seconds: 30,
             alarm_poll_seconds: 0,
-            alarm_history_limit: AlarmLimits::default().history,
-            alarm_picture_budget_bytes: AlarmLimits::default().picture_bytes,
+            alarm_limits: AlarmLimits::default(),
         };
         let runtime = Runtime::build(config, Arc::new(FakeTransport { chunk }))
             .unwrap_or_else(|error| panic!("{error}"));

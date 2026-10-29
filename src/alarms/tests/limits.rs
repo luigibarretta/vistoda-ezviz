@@ -116,3 +116,21 @@ async fn picture_budget_is_split_per_camera() {
     );
     assert_eq!((history.limit(), history.recent(usize::MAX).len()), (50, 5));
 }
+
+#[test]
+fn lowering_the_limit_rewrites_the_history_file() {
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let path = directory.path().join("front");
+    let batch = (1..=5)
+        .map(|at| (record(&format!("e{at}"), at), None))
+        .collect();
+    limited(&path, 5)
+        .insert(batch, true)
+        .unwrap_or_else(|error| panic!("{error}"));
+    drop(limited(&path, 2));
+    assert_eq!(
+        ids(&limited(&path, 5)),
+        ["e4", "e5"],
+        "trimmed alarms must not come back when the limit is raised again"
+    );
+}
