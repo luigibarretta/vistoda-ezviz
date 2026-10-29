@@ -10,6 +10,7 @@ use axum::{
     response::Response,
 };
 use ezviz_vtm_bridge::{
+    alarms::AlarmLimits,
     api::Runtime,
     config::{BridgeConfig, CameraConfig},
     error::BridgeError,
@@ -136,6 +137,8 @@ impl TestSystem {
             snapshot_cache_seconds: 3,
             snapshot_stale_seconds: 30,
             alarm_poll_seconds: 0,
+            alarm_history_limit: AlarmLimits::default().history,
+            alarm_picture_budget_bytes: AlarmLimits::default().picture_bytes,
         };
         let runtime = Runtime::build(config, Arc::new(FakeTransport { chunk }))
             .unwrap_or_else(|error| panic!("{error}"));

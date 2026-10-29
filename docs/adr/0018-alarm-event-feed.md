@@ -29,7 +29,7 @@ page budget.
 
 The first successful fetch per serial primes history silently. Primed and
 persisted alarms are visible as recent history but never returned to a cursor.
-Each camera keeps the newest 200 alarms in `/data/alarms/<alias>/history.json`
+Each camera keeps the newest 200 alarms (configurable 50–2000 since 0.17.0) in `/data/alarms/<alias>/history.json`
 (atomic, mode 0600) with a SHA-256 serial/channel binding, so a re-pointed
 alias starts empty. Sequences are assigned per process; a random `generation`
 UUID tells consumers to reset their cursor after a restart.
@@ -42,7 +42,7 @@ the snapshot decryptor with the camera's verification-code file or the
 `encryptkey` result, and `picCrypt=2` uses the hex `picChecksum` key with the
 48-byte header, `hikpic` and `hiklittlepic` layouts seen in the app.
 Unrecognized payloads keep no picture and increment
-`alarm_pictures_unsupported_total`. Pictures share a 256 MiB budget split
+`alarm_pictures_unsupported_total`. Pictures share a 256 MiB budget (configurable 64–2048 MiB since 0.17.0) split
 evenly per camera and are evicted oldest first and together with their alarm.
 
 ## Consequences

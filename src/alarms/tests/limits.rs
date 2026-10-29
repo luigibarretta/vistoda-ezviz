@@ -90,13 +90,29 @@ async fn picture_budget_is_split_per_camera() {
         ("front".to_owned(), camera("CAM1")),
         ("back".to_owned(), camera("CAM2")),
     ]);
+    // Six pictures in total, so three per camera.
     let limits = AlarmLimits {
         history: 50,
-        picture_bytes: 64 << 20,
+        picture_bytes: 6 * JPEG.len() as u64,
     };
     let feed = AlarmFeed::load(directory.path(), &cameras, Metrics::default(), limits);
-    for slot in feed.cameras.values() {
-        let history = slot.history.lock().await;
-        assert_eq!((history.picture_budget(), history.limit()), (32 << 20, 50));
-    }
+    let batch = (1..=5)
+        .map(|at| (record(&format!("e{at}"), at), Some(JPEG.to_vec())))
+        .collect();
+    feed.publish("front", batch, true)
+        .await
+        .unwrap_or_else(|error| panic!("{error}"));
+    let history = feed.cameras["front"].history.lock().await;
+    let kept: Vec<_> = history
+        .recent(usize::MAX)
+        .into_iter()
+        .filter(|entry| entry.record.has_picture)
+        .map(|entry| entry.record.id)
+        .collect();
+    assert_eq!(
+        kept,
+        ["e3", "e4", "e5"],
+        "oldest pictures go first, alarms stay"
+    );
+    assert_eq!((history.limit(), history.recent(usize::MAX).len()), (50, 5));
 }

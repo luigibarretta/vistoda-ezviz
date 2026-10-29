@@ -50,6 +50,10 @@ export EZVIZ_BRIDGE_API_TOKEN_FILE="${token_file}"
 export EZVIZ_BRIDGE_CAMERAS_FILE="${cameras_file}"
 export EZVIZ_BRIDGE_EZVIZ_TOKEN_FILE="${data_dir}/token.json"
 export EZVIZ_BRIDGE_DATA_DIR="${data_dir}"
+# Alarm retention options; absent on catalogs before 0.4.47, so default here.
+EZVIZ_BRIDGE_ALARM_HISTORY_LIMIT="$(jq -r '.alarm_history_limit // 200' "${options_file}")"
+EZVIZ_BRIDGE_ALARM_PICTURE_BUDGET_MIB="$(jq -r '.alarm_picture_budget_mib // 256' "${options_file}")"
+export EZVIZ_BRIDGE_ALARM_HISTORY_LIMIT EZVIZ_BRIDGE_ALARM_PICTURE_BUDGET_MIB
 
 vistoda_start_child gosu bridge:bridge ezviz-vtm-bridge serve
 vistoda_wait_for_health http://127.0.0.1:8765/healthz 30 1
