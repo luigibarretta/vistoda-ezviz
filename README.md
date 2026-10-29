@@ -158,9 +158,9 @@ the fixed username is `homeassistant` and the API token is the password. The
 authoritative schemas, bounds and responses are in the OpenAPI document.
 
 Alarms are polled read-only every 15 seconds (`EZVIZ_BRIDGE_ALARM_POLL_SECONDS`,
-`0` disables). Omit `after` for up to 50 recent alarms; pass the returned
-`next_sequence` as `after` with `wait` ≤ 25 to long-poll new ones. Reset the
-cursor when `generation` changes. See [ADR-0018](docs/adr/0018-alarm-event-feed.md).
+`0` disables). Omit `after` for the 50 newest, page back with `older` → `before`,
+long-poll with `next_sequence` → `after` and `wait` ≤ 25; reset on a new `generation`.
+Retention: [OPERATIONS](docs/OPERATIONS.md); design: [ADR-0018](docs/adr/0018-alarm-event-feed.md).
 
 Control writes need `expected_value` (409 on a stale view), are verified by
 read-back and rolled back once on mismatch (502 `unconfirmed`); see ADR-0021.
