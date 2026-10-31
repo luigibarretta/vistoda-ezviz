@@ -147,6 +147,11 @@ async fn an_asleep_camera_stops_the_run_without_spending_attempts() {
         [&json!(MAX_RUNS)],
         "each asleep run gets the next key"
     );
+    assert_eq!(
+        state.deletes.load(Ordering::Relaxed),
+        MAX_RUNS,
+        "each failed bridge recording is acknowledged so it does not pile up"
+    );
     // Once the camera answers, the day is imported in one run.
     state.asleep.store(false, Ordering::Relaxed);
     let pulled = sd::pull_day(&template, &day(5))
@@ -158,3 +163,17 @@ async fn an_asleep_camera_stops_the_run_without_spending_attempts() {
 
 /// More runs than a clip has attempts.
 const MAX_RUNS: usize = 4;
+
+#[test]
+fn only_uuid_recording_ids_name_local_files() {
+    let id = "00000000-0000-4000-8000-000000000100";
+    assert_eq!(
+        crate::scenetrove::recording_file_id(id)
+            .map(|id| id.to_string())
+            .ok(),
+        Some(id.to_owned())
+    );
+    for bad in ["../evil", "", "00000000-0000-4000-8000-00000000010/"] {
+        assert!(crate::scenetrove::recording_file_id(bad).is_err(), "{bad}");
+    }
+}

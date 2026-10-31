@@ -1,6 +1,7 @@
 mod catalog;
 mod job;
 mod model;
+mod quota;
 mod recovery;
 mod sd;
 mod writer;
@@ -160,7 +161,17 @@ impl RecordingManager {
         {
             return Err(BridgeError::RecordingActive);
         }
-        if recovery::spool_bytes(&self.directory)? + self.max_bytes > self.quota_bytes {
+        let active = state
+            .manifests
+            .values()
+            .filter(|item| item.is_active())
+            .count() as u64;
+        if !quota::admits(
+            recovery::spool_bytes(&self.directory)?,
+            active,
+            self.max_bytes,
+            self.quota_bytes,
+        ) {
             return Err(BridgeError::Capacity(
                 "recording quota does not have safe headroom".into(),
             ));
@@ -175,10 +186,10 @@ impl RecordingManager {
         drop(state);
         let manager = Arc::clone(self);
         let id = manifest.recording_id.clone();
-        self.tasks
-            .lock()
-            .await
-            .spawn(async move { manager.record(&id, job).await });
+        let mut tasks = self.tasks.lock().await;
+        // Reap finished recordings so the set does not grow for the process lifetime.
+        while tasks.try_join_next().is_some() {}
+        tasks.spawn(async move { manager.record(&id, job).await });
         Ok(manifest)
     }
 

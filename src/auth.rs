@@ -26,8 +26,10 @@ impl ApiAuthenticator {
         })
     }
 
+    /// Bearer everywhere; Basic (`homeassistant` + token) only where
+    /// `allow_basic`, i.e. the Generic Camera snapshot and live routes.
     #[must_use]
-    pub fn accepts(&self, headers: &HeaderMap) -> bool {
+    pub fn accepts(&self, headers: &HeaderMap, allow_basic: bool) -> bool {
         let Some(value) = headers
             .get(AUTHORIZATION)
             .and_then(|value| value.to_str().ok())
@@ -37,7 +39,7 @@ impl ApiAuthenticator {
         if let Some(candidate) = value.strip_prefix("Bearer ") {
             return constant_time(candidate.as_bytes(), &self.token);
         }
-        let Some(encoded) = value.strip_prefix("Basic ") else {
+        let Some(encoded) = value.strip_prefix("Basic ").filter(|_| allow_basic) else {
             return false;
         };
         let Ok(decoded) = STANDARD.decode(encoded) else {
@@ -69,7 +71,7 @@ mod tests {
             HeaderValue::from_str(&format!("Bearer {}", "x".repeat(32)))
                 .unwrap_or_else(|error| panic!("{error}")),
         );
-        assert!(auth.accepts(&headers));
+        assert!(auth.accepts(&headers, false));
         headers.insert(
             AUTHORIZATION,
             HeaderValue::from_str(&format!(
@@ -78,8 +80,12 @@ mod tests {
             ))
             .unwrap_or_else(|error| panic!("{error}")),
         );
-        assert!(auth.accepts(&headers));
+        assert!(auth.accepts(&headers, true));
+        assert!(
+            !auth.accepts(&headers, false),
+            "Basic is reserved for the Generic Camera routes"
+        );
         headers.insert(AUTHORIZATION, HeaderValue::from_static("Basic broken"));
-        assert!(!auth.accepts(&headers));
+        assert!(!auth.accepts(&headers, true));
     }
 }

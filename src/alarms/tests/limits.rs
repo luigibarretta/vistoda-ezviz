@@ -134,3 +134,46 @@ fn lowering_the_limit_rewrites_the_history_file() {
         "trimmed alarms must not come back when the limit is raised again"
     );
 }
+
+#[test]
+fn an_evicted_alarm_of_the_same_second_stays_out() {
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let mut history = limited(&directory.path().join("front"), 2);
+    let batch = vec![
+        (record("a", 5), None),
+        (record("b", 5), None),
+        (record("c", 5), None),
+    ];
+    history
+        .insert(batch, true)
+        .unwrap_or_else(|error| panic!("{error}"));
+    let again = history
+        .insert(vec![(record("a", 5), None)], true)
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(
+        again.inserted, 0,
+        "same second, ordered before the oldest kept"
+    );
+    assert_eq!(ids(&history), ["b", "c"]);
+}
+
+#[test]
+fn a_lowered_picture_budget_is_written_back_at_load() {
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let path = directory.path().join("front");
+    let batch = (1..=3)
+        .map(|at| (record(&format!("e{at}"), at), Some(JPEG.to_vec())))
+        .collect();
+    CameraHistory::load(&path, &camera("CAM1"), 1 << 20, 10)
+        .insert(batch, true)
+        .unwrap_or_else(|error| panic!("{error}"));
+    drop(CameraHistory::load(
+        &path,
+        &camera("CAM1"),
+        JPEG.len() as u64,
+        10,
+    ));
+    let stored = std::fs::read_to_string(path.join("history.json"))
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(stored.matches("\"has_picture\":true").count(), 1);
+}

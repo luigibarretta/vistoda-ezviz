@@ -54,7 +54,7 @@ async fn authenticate(
     request: Request,
     next: Next,
 ) -> Response {
-    if request.uri().path() == "/healthz" || runtime.auth.accepts(request.headers()) {
+    if request.uri().path() == "/healthz" || runtime.auth.accepts(request.headers(), false) {
         return next.run(request).await;
     }
     let mut response = (

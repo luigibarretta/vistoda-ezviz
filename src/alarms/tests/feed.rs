@@ -66,14 +66,15 @@ fn history_and_pictures_are_bounded() {
     let budget = 3 * JPEG.len() as u64;
     let mut history = CameraHistory::load(&path, &camera("CAM1"), budget, DEFAULT_HISTORY_LIMIT);
     let batch = (0..DEFAULT_HISTORY_LIMIT + 5)
-        .map(|index| (record(&format!("e{index}"), 10), Some(JPEG.to_vec())))
+        // Same second: ids sort like the fetch orders them (time, then id).
+        .map(|index| (record(&format!("e{index:03}"), 10), Some(JPEG.to_vec())))
         .collect();
     history
         .insert(batch, true)
         .unwrap_or_else(|error| panic!("{error}"));
     let recent = history.recent(usize::MAX);
     assert_eq!(recent.len(), DEFAULT_HISTORY_LIMIT);
-    assert_eq!(recent[0].record.id, "e5");
+    assert_eq!(recent[0].record.id, "e005");
     let with_pictures = recent
         .iter()
         .filter(|entry| entry.record.has_picture)
@@ -82,7 +83,7 @@ fn history_and_pictures_are_bounded() {
     let files = std::fs::read_dir(path.join("pictures")).map_or(0, Iterator::count);
     assert_eq!(files, 3);
     assert!(
-        path.join(format!("pictures/e{}.jpg", DEFAULT_HISTORY_LIMIT + 4))
+        path.join(format!("pictures/e{:03}.jpg", DEFAULT_HISTORY_LIMIT + 4))
             .is_file()
     );
 }

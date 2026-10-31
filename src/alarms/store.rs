@@ -101,9 +101,9 @@ impl CameraHistory {
         history.floor = history.head;
         let keep = history.ids();
         history.pictures.remove_orphans(&keep);
-        history.enforce_picture_budget();
-        // A lowered limit: the trimmed alarms must leave the file (and backups).
-        if skip > 0 {
+        let dropped_pictures = history.enforce_picture_budget();
+        // A lowered limit or budget: what was trimmed must leave the file (and backups).
+        if skip > 0 || dropped_pictures {
             if let Err(error) = history.persist() {
                 tracing::warn!(
                     error_type = error.diagnostic_code(),
@@ -146,10 +146,10 @@ impl CameraHistory {
     /// evicted (or would be at once) and must not come back as new.
     fn predates_full_history(&self, record: &AlarmRecord) -> bool {
         self.events.len() >= self.limit
-            && self
-                .events
-                .front()
-                .is_some_and(|oldest| record.occurred_at < oldest.record.occurred_at)
+            && self.events.front().is_some_and(|oldest| {
+                // Same order as the fetch: time, then id (alarms share seconds).
+                (record.occurred_at, &record.id) < (oldest.record.occurred_at, &oldest.record.id)
+            })
     }
 
     #[must_use]
@@ -206,9 +206,11 @@ impl CameraHistory {
         Ok(outcome)
     }
 
-    /// Drops the oldest pictures while the camera exceeds its byte budget.
-    fn enforce_picture_budget(&mut self) {
+    /// Drops the oldest pictures while the camera exceeds its byte budget;
+    /// true when it dropped any.
+    fn enforce_picture_budget(&mut self) -> bool {
         let mut total: u64 = self.events.iter().map(|e| e.record.picture_bytes).sum();
+        let mut dropped = false;
         for entry in &mut self.events {
             if total <= self.picture_budget {
                 break;
@@ -218,8 +220,10 @@ impl CameraHistory {
                 total = total.saturating_sub(entry.record.picture_bytes);
                 entry.record.has_picture = false;
                 entry.record.picture_bytes = 0;
+                dropped = true;
             }
         }
+        dropped
     }
 
     fn persist(&self) -> Result<(), BridgeError> {

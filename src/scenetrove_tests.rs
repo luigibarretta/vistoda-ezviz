@@ -3,7 +3,7 @@ use std::{
     os::unix::fs::PermissionsExt,
     path::Path,
     sync::{
-        Arc,
+        Arc, PoisonError,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
@@ -62,17 +62,14 @@ async fn create(
             value["error_code"] = json!("camera_offline");
         }
         if let Some(key) = key {
-            let mut keys = state
-                .keys
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut keys = state.keys.lock().unwrap_or_else(PoisonError::into_inner);
             value = keys.entry(key.to_owned()).or_insert(value).clone();
         }
     }
     state
         .bodies
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .unwrap_or_else(PoisonError::into_inner)
         .push(body);
     Json(value)
 }
@@ -110,7 +107,7 @@ async fn acknowledge(State(state): State<Arc<MockState>>) -> StatusCode {
     let exists = state
         .expected_local
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .unwrap_or_else(PoisonError::into_inner)
         .as_ref()
         .is_some_and(|path| path.is_file());
     state.local_commit_seen.store(exists, Ordering::Relaxed);
@@ -180,7 +177,7 @@ async fn ack_happens_only_after_local_commit() {
     *state
         .expected_local
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(expected);
+        .unwrap_or_else(PoisonError::into_inner) = Some(expected);
     let result = pull(request)
         .await
         .unwrap_or_else(|error| panic!("{error}"));
@@ -205,7 +202,7 @@ async fn receipt_recovers_crash_window_without_new_recording() {
     *state
         .expected_local
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(media_path.clone());
+        .unwrap_or_else(PoisonError::into_inner) = Some(media_path.clone());
     let result = PullResult {
         recording_id: "already-committed".into(),
         path: media_path,

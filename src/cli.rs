@@ -80,7 +80,7 @@ async fn healthcheck() -> Result<(), BridgeError> {
     let response = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .build()?
-        .get("http://127.0.0.1:8765/healthz")
+        .get(crate::config::health_url())
         .send()
         .await?;
     if !response.status().is_success() {

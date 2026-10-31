@@ -1,7 +1,7 @@
 def valid_alias:
   type == "string" and test("^[A-Za-z0-9_-]{1,64}$");
 def valid_serial:
-  type == "string" and test("^[A-Za-z0-9]+$");
+  type == "string" and test("^[A-Za-z0-9]{1,64}$");
 def valid_channel:
   type == "number" and floor == . and . >= 1 and . <= 256;
 # Optional private video verification code: printable ASCII without spaces.

@@ -58,12 +58,13 @@ impl EzvizToken {
     }
 }
 
+/// The auth address always uses HTTPS: the session id travels in its query.
 fn with_https(value: &str) -> String {
-    if value.starts_with("https://") || value.starts_with("http://") {
-        value.trim_end_matches('/').to_owned()
-    } else {
-        format!("https://{}", value.trim_end_matches('/'))
-    }
+    let host = value
+        .trim_end_matches('/')
+        .trim_start_matches("https://")
+        .trim_start_matches("http://");
+    format!("https://{host}")
 }
 
 fn usable_auth_address(value: &str) -> Option<String> {
@@ -86,6 +87,18 @@ mod tests {
             service_urls: Some(serde_json::json!({"authAddr": auth})),
             extra: BTreeMap::new(),
         }
+    }
+
+    #[test]
+    fn plain_http_auth_addresses_are_upgraded_to_https() {
+        assert_eq!(
+            usable_auth_address("http://apiieu.ezvizlife.com/"),
+            Some("https://apiieu.ezvizlife.com".to_owned())
+        );
+        assert_eq!(
+            with_https("apiieu.ezvizlife.com"),
+            "https://apiieu.ezvizlife.com"
+        );
     }
 
     #[test]

@@ -174,10 +174,12 @@ fn alarm_limits() -> AlarmLimits {
 /// takes the default; an invalid or out-of-range one is replaced (default or
 /// nearest bound) and the replacement is logged.
 fn clamped(name: &str, default: u64, minimum: u64, maximum: u64) -> u64 {
-    let (value, adjusted) = bounded(env::var(name).ok().as_deref(), default, minimum, maximum);
+    let raw = env::var(name).ok();
+    let (value, adjusted) = bounded(raw.as_deref(), default, minimum, maximum);
     if adjusted {
         tracing::warn!(
             variable = name,
+            raw = raw.as_deref().unwrap_or_default(),
             value,
             "configuration value replaced to stay in range"
         );
@@ -187,12 +189,13 @@ fn clamped(name: &str, default: u64, minimum: u64, maximum: u64) -> u64 {
 
 /// The value to use for `raw` and whether it had to be replaced.
 fn bounded(raw: Option<&str>, default: u64, minimum: u64, maximum: u64) -> (u64, bool) {
-    match raw.map(|raw| raw.trim().parse::<u64>()) {
+    match raw.map(|raw| raw.trim().parse::<i64>()) {
         None => (default, false),
         Some(Err(_)) => (default, true),
+        // Negative values clamp to the minimum like any other out-of-range value.
         Some(Ok(parsed)) => {
-            let value = parsed.clamp(minimum, maximum);
-            (value, value != parsed)
+            let value = u64::try_from(parsed).unwrap_or(0).clamp(minimum, maximum);
+            (value, i128::from(value) != i128::from(parsed))
         }
     }
 }
@@ -216,6 +219,22 @@ fn integer(name: &str, default: u64, minimum: u64, maximum: u64) -> Result<u64, 
         )));
     }
     Ok(parsed)
+}
+
+/// Health endpoint of the configured listener (loopback when bound to all).
+#[must_use]
+pub fn health_url() -> String {
+    let port = u16::try_from(clamped("EZVIZ_BRIDGE_BIND_PORT", 8765, 1024, 65_535)).unwrap_or(8765);
+    health_url_for(&value("EZVIZ_BRIDGE_BIND_HOST", "0.0.0.0"), port)
+}
+
+fn health_url_for(host: &str, port: u16) -> String {
+    let host = if matches!(host, "0.0.0.0" | "::" | "") {
+        "127.0.0.1"
+    } else {
+        host
+    };
+    format!("http://{host}:{port}/healthz")
 }
 
 #[cfg(test)]

@@ -103,11 +103,9 @@ pub async fn pull(request: PullRequest) -> Result<PullResult, BridgeError> {
             .map_err(|_| BridgeError::Configuration("status URL is invalid".into()))?;
         manifest = bounded_json(client.get(url).bearer_auth(&token).send().await?).await?;
     }
+    let recording_id = recording_file_id(&manifest.recording_id)?;
     if manifest.status != "ready" {
-        return Err(BridgeError::Upstream(format!(
-            "bridge recording failed: {}",
-            manifest.error_code.as_deref().unwrap_or("unknown")
-        )));
+        return Err(release_failed(&client, &base, &token, &manifest).await);
     }
     let expected_bytes = manifest
         .bytes
@@ -135,11 +133,7 @@ pub async fn pull(request: PullRequest) -> Result<PullResult, BridgeError> {
             .to_string(),
     };
     let media_format = MediaFormat::from_media_type(&manifest.media_type)?;
-    let filename = format!(
-        "hiv{stamp}-{}.{}",
-        manifest.recording_id,
-        media_format.extension()
-    );
+    let filename = format!("hiv{stamp}-{recording_id}.{}", media_format.extension());
     let final_path = request.destination.join(&filename);
     let partial = request
         .destination
@@ -217,3 +211,26 @@ pub(crate) fn encode_segment(value: &str) -> String {
 #[cfg(test)]
 #[path = "scenetrove_tests.rs"]
 mod tests;
+
+/// Acknowledges a failed bridge recording so failures do not pile up in the
+/// bridge journal (each retry uses a new idempotency key), and returns the error.
+async fn release_failed(
+    client: &Client,
+    base: &Url,
+    token: &str,
+    manifest: &Manifest,
+) -> BridgeError {
+    if let Err(error) = acknowledge(client, base, token, &manifest.recording_id).await {
+        tracing::debug!(error_type = error.diagnostic_code(), "failed recording ack");
+    }
+    BridgeError::Upstream(format!(
+        "bridge recording failed: {}",
+        manifest.error_code.as_deref().unwrap_or("unknown")
+    ))
+}
+
+/// The bridge's recording id names a local file only when it is a UUID.
+pub(crate) fn recording_file_id(id: &str) -> Result<uuid::Uuid, BridgeError> {
+    uuid::Uuid::parse_str(id)
+        .map_err(|_| BridgeError::Upstream("bridge recording id is invalid".into()))
+}

@@ -25,8 +25,7 @@ Some EZVIZ devices (door viewers, battery models) have no local video interface
 at all: the vendor cloud is their only stream. This bridge keeps that protocol,
 its credentials and failure modes behind a small, versioned HTTP contract.
 
-It does not transcode, record continuously, expose an Internet route or modify
-firmware.
+It never transcodes, records continuously, exposes an Internet route or edits firmware.
 
 ## Capabilities
 
@@ -139,6 +138,7 @@ still installed:
 | `GET /v1/cameras/{camera}/live.ts` | shared MPEG-TS | bearer or Basic |
 | `GET /v1/cameras/{camera}/alarms?after=&wait=` | alarm cursor/long-poll batch | bearer |
 | `GET /v1/cameras/{camera}/alarms/{id}/picture.jpg` | stored alarm JPEG | bearer |
+| `GET /v1/cameras/{camera}/identity` | serial/channel binding check | bearer |
 | `GET /v1/cameras/{camera}/encryption` | encryption state and key source | bearer |
 | `GET /v1/cameras/{camera}/storage` | microSD status (10-minute cache) | bearer |
 | `GET /v1/cameras/{camera}/sd-records?date=` | one-day SD record index | bearer |
@@ -153,9 +153,9 @@ still installed:
 | `GET /v1/recordings/{id}/playback.mp4` | fragmented MP4 browser playback | bearer |
 | `DELETE /v1/recordings/{id}` | idempotent spool ACK after local commit | bearer |
 
-Basic authentication is reserved for Home Assistant's Generic Camera client:
-the fixed username is `homeassistant` and the API token is the password. The
-authoritative schemas, bounds and responses are in the OpenAPI document.
+Basic authentication (user `homeassistant`, API token as password) is accepted
+only on `snapshot.jpg` and `live.ts`, for Home Assistant's Generic Camera
+client. Authoritative schemas, bounds and responses are in the OpenAPI document.
 
 Alarms are polled read-only every 15 seconds (`EZVIZ_BRIDGE_ALARM_POLL_SECONDS`,
 `0` disables). Omit `after` for the 50 newest, page back with `older` → `before`,

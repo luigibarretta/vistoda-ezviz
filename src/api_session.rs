@@ -48,7 +48,8 @@ pub async fn authenticate(
     if path == "/healthz" {
         return next.run(request).await;
     }
-    if !runtime.auth.accepts(request.headers()) {
+    let generic_camera = path.ends_with("/snapshot.jpg") || path.ends_with("/live.ts");
+    if !runtime.auth.accepts(request.headers(), generic_camera) {
         runtime
             .metrics
             .increment_labeled("api_auth_failures_total", &[])

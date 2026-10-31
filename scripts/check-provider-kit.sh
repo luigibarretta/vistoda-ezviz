@@ -12,9 +12,12 @@ if test "$(git -C "${kit}" rev-parse HEAD 2>/dev/null || true)" != "${pin}"; the
     rm -rf "${kit}"
     git init --quiet "${kit}"
     git -C "${kit}" remote add origin "${url}"
-    git -C "${kit}" fetch --quiet --depth=1 origin "${pin}"
-    git -C "${kit}" checkout --quiet --detach FETCH_HEAD
+    git -C "${kit}" fetch --quiet --depth=1 origin "+${pin}:refs/remotes/origin/pinned"
+    git -C "${kit}" checkout --quiet --detach refs/remotes/origin/pinned
 fi
+# Keep the pin in a remote-tracking ref (also for existing checkouts), so the
+# homelab Git inventory does not report it as unpushed work.
+git -C "${kit}" update-ref refs/remotes/origin/pinned "${pin}"
 test "$(git -C "${kit}" rev-parse HEAD)" = "${pin}"
 test -z "$(git -C "${kit}" status --porcelain)"
 cmp "${kit}/dist/vistoda-app-bootstrap.sh" \
