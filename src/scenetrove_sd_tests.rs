@@ -133,7 +133,20 @@ async fn an_asleep_camera_stops_the_run_without_spending_attempts() {
     let ledger: Value =
         serde_json::from_slice(&fs::read(&ledger_path).unwrap_or_else(|error| panic!("{error}")))
             .unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(ledger, json!({"done": [], "attempts": {}}));
+    assert_eq!(
+        (&ledger["done"], &ledger["attempts"]),
+        (&json!([]), &json!({}))
+    );
+    let wakes: Vec<_> = ledger["wakes"]
+        .as_object()
+        .into_iter()
+        .flat_map(|w| w.values())
+        .collect();
+    assert_eq!(
+        wakes,
+        [&json!(MAX_RUNS)],
+        "each asleep run gets the next key"
+    );
     // Once the camera answers, the day is imported in one run.
     state.asleep.store(false, Ordering::Relaxed);
     let pulled = sd::pull_day(&template, &day(5))

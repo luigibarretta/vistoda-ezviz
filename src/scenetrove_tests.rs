@@ -34,6 +34,8 @@ struct MockState {
     slow_clip: AtomicBool,
     /// Every microSD recording fails because the camera does not answer.
     asleep: AtomicBool,
+    /// Like the bridge: a known idempotency key returns its stored manifest.
+    keys: std::sync::Mutex<std::collections::HashMap<String, Value>>,
 }
 
 async fn create(
@@ -51,13 +53,20 @@ async fn create(
             value["status"] = json!("recording");
         }
         // The 200 s clip's first attempt loses the relay.
-        if start == 200 && key.is_some_and(|key| key.ends_with("-a0")) {
+        if start == 200 && key.is_some_and(|key| key.contains("-a0-")) {
             value["status"] = json!("failed");
             value["error_code"] = json!("upstream_unavailable");
         }
         if state.asleep.load(Ordering::Relaxed) {
             value["status"] = json!("failed");
             value["error_code"] = json!("camera_offline");
+        }
+        if let Some(key) = key {
+            let mut keys = state
+                .keys
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            value = keys.entry(key.to_owned()).or_insert(value).clone();
         }
     }
     state

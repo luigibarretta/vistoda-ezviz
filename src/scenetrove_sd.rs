@@ -32,16 +32,21 @@ const STILL_RUNNING: &str = "recording did not finish before deadline";
 /// Bridge recordings tried per clip before it is given up.
 const MAX_ATTEMPTS: u32 = 3;
 
-/// Clips imported or given up, and failed attempts of the others.
+/// Clips imported or given up, failed attempts of the others, and how often
+/// a clip found the camera asleep (each needs a fresh idempotency key: the
+/// bridge answers a known key with its stored, failed manifest).
 #[derive(Default, Deserialize, Serialize)]
 struct Ledger {
     done: BTreeSet<String>,
     attempts: BTreeMap<String, u32>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    wakes: BTreeMap<String, u32>,
 }
 
 impl Ledger {
     fn finish(&mut self, clip: &str) {
         self.attempts.remove(clip);
+        self.wakes.remove(clip);
         self.done.insert(clip.to_owned());
     }
 }
@@ -115,6 +120,7 @@ pub async fn pull_day(template: &PullRequest, day: &SdDay) -> Result<Vec<PullRes
         }
         attempts_left -= 1;
         let attempt = ledger.attempts.get(&clip).copied().unwrap_or(0);
+        let wake = ledger.wakes.get(&clip).copied().unwrap_or(0);
         let end = record
             .end
             .min(record.start.saturating_add(day.max_seconds))
@@ -123,7 +129,7 @@ pub async fn pull_day(template: &PullRequest, day: &SdDay) -> Result<Vec<PullRes
             sd_interval: Some((record.start, end)),
             // A failed or acknowledged bridge recording keeps its key, and a
             // different interval may not reuse it: each attempt gets its own.
-            idempotency_key: format!("{clip}-e{end}-a{attempt}"),
+            idempotency_key: format!("{clip}-e{end}-a{attempt}-w{wake}"),
             ..template.clone()
         };
         match pull(request).await {
@@ -136,8 +142,12 @@ pub async fn pull_day(template: &PullRequest, day: &SdDay) -> Result<Vec<PullRes
                 ledger.finish(&clip);
             }
             // The camera is asleep: later clips would fail the same way, so
-            // stop without spending an attempt; a later run retries.
-            Err(BridgeError::Upstream(detail)) if detail == OFFLINE => break,
+            // stop without spending an attempt; a later run retries the clip
+            // under a new key.
+            Err(BridgeError::Upstream(detail)) if detail == OFFLINE => {
+                *ledger.wakes.entry(clip).or_default() += 1;
+                break;
+            }
             // The relay failed or the key was refused: retry on a later
             // run with a new key, at most `MAX_ATTEMPTS` times.
             Err(BridgeError::Upstream(detail))
