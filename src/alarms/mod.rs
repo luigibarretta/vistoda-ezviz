@@ -94,7 +94,7 @@ pub struct AlarmBatch {
 
 pub(crate) struct CameraSlot {
     pub(crate) config: CameraConfig,
-    pub(crate) history: Mutex<CameraHistory>,
+    pub(crate) history: Arc<Mutex<CameraHistory>>,
     head: watch::Sender<u64>,
 }
 
@@ -124,7 +124,7 @@ impl AlarmFeed {
                 let (head, _receiver) = watch::channel(history.head());
                 let slot = CameraSlot {
                     config: config.clone(),
-                    history: Mutex::new(history),
+                    history: Arc::new(Mutex::new(history)),
                     head,
                 };
                 (alias.clone(), slot)
@@ -183,8 +183,15 @@ impl AlarmFeed {
         live: bool,
     ) -> Result<store::InsertOutcome, BridgeError> {
         let slot = self.cameras.get(alias).ok_or(BridgeError::CameraNotFound)?;
-        let mut history = slot.history.lock().await;
-        let outcome = history.insert(batch, live)?;
+        let mut history = Arc::clone(&slot.history).lock_owned().await;
+        // Picture writes, fsync and the history file block: keep them off the
+        // runtime threads while the camera's history stays locked.
+        let (history, outcome) = tokio::task::spawn_blocking(move || {
+            let outcome = history.insert(batch, live);
+            (history, outcome)
+        })
+        .await?;
+        let outcome = outcome?;
         slot.head.send_replace(history.head());
         Ok(outcome)
     }
