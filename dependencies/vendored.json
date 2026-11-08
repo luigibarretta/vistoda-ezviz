@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "dependencies": [
+    {
+      "name": "vistoda-provider-kit",
+      "files": { "dist/vistoda-app-bootstrap.sh": "packaging/home-assistant/vistoda-app-bootstrap.sh" },
+      "pinFile": "dependencies/vistoda-provider-kit.sha",
+      "upstream": {
+        "checkout": ".ci/vistoda-provider-kit",
+        "url": "https://github.com/luigibarretta/lib-vistoda-provider-kit.git"
+      }
+    }
+  ]
+}

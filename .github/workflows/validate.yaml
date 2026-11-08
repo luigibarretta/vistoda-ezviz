@@ -12,22 +12,20 @@ on:
 permissions:
   contents: read
 
+# Checks come from ci-local.json through the vendored ci-local runner, as in
+# .gitea/workflows/ci.yaml; this workflow never repeats a manifest command
+# (repo-tooling consumer contract). Plain steps are GitHub-only: checkouts,
+# toolchains, caches, cargo-audit installation, gitleaks-action and the image
+# build.
 jobs:
   provider-kit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - name: Fetch the exact provider kit from the public source of truth
-        run: |
-          git init .ci/vistoda-provider-kit
-          git -C .ci/vistoda-provider-kit remote add origin https://github.com/luigibarretta/lib-vistoda-provider-kit.git
-          git -C .ci/vistoda-provider-kit fetch --depth=1 origin c09837694fd8816bb0eb478b70553810891c0387
-          git -C .ci/vistoda-provider-kit checkout --detach FETCH_HEAD
-      - name: Verify exact bootstrap dependency and lifecycle
-        run: |
-          test "$(git -C .ci/vistoda-provider-kit rev-parse HEAD)" = "$(tr -d '[:space:]' < dependencies/vistoda-provider-kit.sha)"
-          cmp .ci/vistoda-provider-kit/dist/vistoda-app-bootstrap.sh packaging/home-assistant/vistoda-app-bootstrap.sh
-          sh .ci/vistoda-provider-kit/tests/bootstrap-test.sh
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # provider-kit fetches lib-vistoda-provider-kit at
+      # dependencies/vistoda-provider-kit.sha (dependencies/vendored.json).
+      - name: Exact bootstrap dependency and kit lifecycle test
+        run: node third_party/repo-tooling/ci-local.mjs --ci --only provider-kit,provider-kit-test
 
   secret-scan:
     runs-on: ubuntu-latest
@@ -41,36 +39,39 @@ jobs:
 
   quality:
     runs-on: ubuntu-latest
-    permissions:
-      checks: write
-      contents: read
-      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
+      # The repo-tooling-sync step compares third_party/repo-tooling with this
+      # checkout of the commit pinned in dependencies/repo-tooling.sha.
+      - name: Checkout pinned repository tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          components: clippy, rustfmt
+          repository: luigibarretta/repo-tooling
+          ref: b8ee6b7218d4d01c90403d1d24826006242a6a23
+          path: .ci/repo-tooling
+      # Same reachable mainline action commit as Gitea CI; version branches are rewritten upstream.
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
+        with:
+          toolchain: "1.88.0"
+          components: clippy,rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
-      - run: cargo test --all-targets --all-features --locked
-      # Keep the product MSRV checks above on Rust 1.88, but run cargo-audit
-      # with a current toolchain because audit-check compiles its own CLI.
-      - uses: dtolnay/rust-toolchain@858a1ecb106d4516018578006590eb829de1f08e # 1.96.1
-      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
-        with:
-          token: ${{ github.token }}
+      - name: Install pinned cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - name: Vendored tooling, LOC and NASA ratchets, rustfmt and dependency audit
+        run: node third_party/repo-tooling/ci-local.mjs --ci --only repo-tooling-sync,loc,nasa,source-languages,rust-fmt,audit-lockfiles
+      - name: Clippy, ci-local job ownership and Rust tests
+        run: node third_party/repo-tooling/ci-local.mjs --ci --only rust-clippy,ci-local-jobs,rust-test
 
   app-image:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Release identity and publication preflight
+        run: node third_party/repo-tooling/ci-local.mjs --ci --only release-check
       - name: Build the app image at the declared version
         # Runs on the same checkout as the tag-triggered release workflow.
         shell: bash
         run: |
-          sh scripts/check-release.sh
-          bash tests/release-preflight.sh
           version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
           test -n "${version}"
           docker build \

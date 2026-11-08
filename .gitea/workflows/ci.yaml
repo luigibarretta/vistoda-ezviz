@@ -8,23 +8,21 @@ on:
 # entry point used before a push (`node third_party/repo-tooling/ci-local.mjs
 # --quick`, then the full gate). Every manifest step runs in exactly one call
 # below (tests/ci_local_jobs.rs). Plain workflow steps are CI-only: checkouts,
-# the repo-tooling pin check, toolchains, caches, cargo-audit installation and
-# the container image build and smoke tests.
+# the repo-tooling checkout at the pin, toolchains, caches, cargo-audit
+# installation and the container image build and smoke tests.
 jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # CI-only: verifies third_party/repo-tooling against a checkout of the
-      # commit pinned in dependencies/repo-tooling.sha.
+      # CI-only: the repo-tooling-sync step compares third_party/repo-tooling
+      # with this checkout of the commit pinned in dependencies/repo-tooling.sha.
       - name: Checkout pinned repository tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: luigibarretta/repo-tooling
-          ref: 7c1288562bb7ae8c5e111cf7da965cc69830cdd7
+          ref: b8ee6b7218d4d01c90403d1d24826006242a6a23
           path: .ci/repo-tooling
-      - name: Verify pinned repository tooling
-        run: scripts/check-repo-tooling-sync.sh
       # Use a reachable mainline action commit; version branches are rewritten upstream.
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
@@ -34,11 +32,12 @@ jobs:
       - name: Install pinned cargo-audit
         run: cargo install cargo-audit --version 0.22.2 --locked
       # The provider-kit step fetches lib-vistoda-provider-kit at
-      # dependencies/vistoda-provider-kit.sha from its public source of truth.
-      - name: Provider kit, release identity, rustfmt and dependency audit
-        run: node third_party/repo-tooling/ci-local.mjs --ci --only provider-kit,release-check,rust-fmt,audit-lockfiles
-      - name: Clippy, ci-local job ownership, LOC budget and Rust tests
-        run: node third_party/repo-tooling/ci-local.mjs --ci --only rust-clippy,ci-local-jobs,loc-budget,rust-test
+      # dependencies/vistoda-provider-kit.sha from its public source of truth
+      # (dependencies/vendored.json).
+      - name: Vendored tooling and provider kit, release identity, LOC and NASA ratchets, rustfmt and dependency audit
+        run: node third_party/repo-tooling/ci-local.mjs --ci --only repo-tooling-sync,provider-kit,provider-kit-test,release-check,loc,nasa,source-languages,rust-fmt,audit-lockfiles
+      - name: Clippy, ci-local job ownership and Rust tests
+        run: node third_party/repo-tooling/ci-local.mjs --ci --only rust-clippy,ci-local-jobs,rust-test
       # CI-only from here on: the container image build and its smoke tests.
       - name: Build standalone image at the declared version
         shell: bash

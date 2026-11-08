@@ -196,10 +196,12 @@ docker build --tag ezviz-vtm-bridge:test .           # image and smoke tests: CI
 ```
 
 Tests are deterministic and require neither network nor EZVIZ credentials. Live canaries are separate and opt-in. CI enforces formatting, strict Clippy,
-tests, RustSec audit, image build and a maximum of 250 physical lines for every
-maintained source, configuration and documentation file. Split a responsibility
-instead of adding a LOC exception. A repository test also rejects any future
-Python source so the Rust-only boundary cannot silently regress.
+tests, RustSec audit, image build and the repo-tooling `fleet-default` LOC
+preset: 400 physical lines per source file, no growth, ratchet down
+(`scripts/loc-baseline.json`), plus NASA/JPL-inspired counters that may not
+rise (`scripts/nasa-baseline.json`). Split a responsibility instead of adding a
+LOC exception. The `source-languages` gate step also rejects any future Python
+source so the Rust-only boundary cannot silently regress.
 The Home Assistant bootstrap is vendored from
 [`lib-vistoda-provider-kit`](https://git.luigibarretta.com/luigibarretta/lib-vistoda-provider-kit)
 at the commit in `dependencies/vistoda-provider-kit.sha` and verified byte-for-byte in CI.
