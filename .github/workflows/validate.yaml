@@ -41,14 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # The repo-tooling-sync step compares third_party/repo-tooling with this
-      # checkout of the commit pinned in dependencies/repo-tooling.sha.
-      - name: Checkout pinned repository tooling
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: luigibarretta/repo-tooling
-          ref: b8ee6b7218d4d01c90403d1d24826006242a6a23
-          path: .ci/repo-tooling
+      # repo-tooling-sync runs on Gitea only: the repo-tooling mirror on GitHub
+      # is private, so this public workflow cannot check it out.
       # Same reachable mainline action commit as Gitea CI; version branches are rewritten upstream.
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
@@ -58,7 +52,7 @@ jobs:
       - name: Install pinned cargo-audit
         run: cargo install cargo-audit --version 0.22.2 --locked
       - name: Vendored tooling, LOC and NASA ratchets, rustfmt and dependency audit
-        run: node third_party/repo-tooling/ci-local.mjs --ci --only repo-tooling-sync,loc,nasa,source-languages,rust-fmt,audit-lockfiles
+        run: node third_party/repo-tooling/ci-local.mjs --ci --only loc,nasa,source-languages,rust-fmt,audit-lockfiles
       - name: Clippy, ci-local job ownership and Rust tests
         run: node third_party/repo-tooling/ci-local.mjs --ci --only rust-clippy,ci-local-jobs,rust-test
 
