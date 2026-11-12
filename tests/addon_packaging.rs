@@ -57,6 +57,8 @@ fn assert_runtime_contract(root: &Path) {
     assert!(runner.contains("--rawfile api_token"));
     assert!(runner.contains("vistoda_prepare_data_dir bridge:bridge \"${data_dir}\""));
     assert!(runner.contains("vistoda_secure_file bridge:bridge \"${data_dir}/token.json\""));
+    assert!(runner.contains("vistoda_secure_file bridge:bridge \"${data_dir}/token.sealed\""));
+    assert!(runner.contains("vistoda_secure_file bridge:bridge \"${data_dir}/store.key\""));
     assert!(camera_filter.contains("substream values are invalid"));
     assert!(!camera_filter.contains(".substream // false | booleans"));
     assert!(camera_filter.contains("verification codes are invalid"));

@@ -22,6 +22,7 @@ receive bridge or EZVIZ credentials.
 | --- | --- |
 | Unauthorized viewing | Constant-time Bearer authentication; no public route; network allowlist at deployment |
 | Credential disclosure | Token files `0600`; request/exception redaction; no debug bodies, stream URLs or serial labels |
+| EZVIZ session at rest | `token.sealed` is AES-256-GCM sealed under an HKDF sub-key of a random owner-only `store.key` (lib-vistoda-provider-kit `sealed_store`); a plaintext `token.json` from an earlier release is sealed on first start, read back and only then removed. The key is not derived from the bridge API token that Home Assistant also holds. Limit: `store.key` sits next to the sealed file, so anyone who can read the whole data directory (for example a full backup) can still open the session; sealing protects against partial reads and token holders |
 | Slow-client memory exhaustion | Bounded queues; slow subscriber eviction; maximum subscribers |
 | Battery denial of service | One upstream per camera; idle grace; hard client-session lifetime; stream and snapshot rate limits; bounded recording duration |
 | Verification-code disclosure | Option codes written by jq to `0600` files, never in `cameras.json`, argv, logs or responses; cloud copies held in zeroizing memory and accepted only when they match `encryptPwd` |
@@ -31,7 +32,7 @@ receive bridge or EZVIZ credentials.
 | Disk exhaustion | Recording quota, maximum duration, atomic files, bounded ACK tombstones and explicit retention owner |
 | Malformed cloud frames | Bounded chunk sizes, producer restart backoff and no unsafe parsing in the HTTP process |
 | FFmpeg hangs | Fixed argv, no shell, process-group termination and bounded shutdown |
-| Token race/corruption | Atomic replace with fsync and strict file mode; one token owner process; one lock orders every refresh and token write, and the refresh runs detached so a cancelled request cannot lose a rotated token (ADR-0022) |
+| Token race/corruption | Atomic replace with fsync and strict file mode, no-clobber creation of `store.key`; one token owner process; one lock orders every refresh and token write, and the refresh runs detached so a cancelled request cannot lose a rotated token (ADR-0022) |
 | Credential exfiltration at enrollment | Region redirects capped at two; API domains must be plain `*.ezvizlife.com` or `*.ezvizru.com` hosts |
 | Session leakage to media hosts | Snapshot and alarm-picture URLs fetched without session or bearer headers and with size bounds. HTTPS on any host; plain HTTP (and HTTP redirects) only on `ezvizlife.com`, `ezvizru.com` and `ezviz.com` hosts, matched on a dot boundary, because EZVIZ can return `http://` capture URLs (0.13.2). An on-path attacker could read or swap that one picture but gains no credential; verification-code cameras also AES-encrypt it. Errors and logs name only scheme and host, never path or query |
 | SSRF/path traversal | Camera aliases from static config; no caller-controlled upstream URL or filesystem path |

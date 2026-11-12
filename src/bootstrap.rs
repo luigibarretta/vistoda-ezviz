@@ -2,25 +2,23 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    extract::{Path, Request, State},
-    http::{HeaderValue, StatusCode, header},
-    middleware::{self, Next},
+    extract::{Path, State},
+    http::{StatusCode, header},
+    middleware,
     response::{IntoResponse, Response},
     routing::{get, post},
 };
 use serde_json::json;
+use vistoda_provider_kit::auth::{AuthPolicy, require_auth, unauthorized};
 
 use crate::{
     VERSION,
-    auth::ApiAuthenticator,
     config::BridgeConfig,
     enrollment::{EnrollmentManager, EnrollmentStart, VerifyEnrollment},
     error::BridgeError,
-    storage::ensure_private_regular,
 };
 
 struct BootstrapRuntime {
-    auth: ApiAuthenticator,
     enrollment: EnrollmentManager,
 }
 
@@ -28,9 +26,9 @@ pub fn router(
     config: &BridgeConfig,
     ready: tokio::sync::watch::Sender<bool>,
 ) -> Result<Router, BridgeError> {
-    let token = ensure_private_regular(&config.api_token_file, 32)?;
+    let policy = AuthPolicy::new(crate::auth::load(&config.api_token_file)?)
+        .rejection(|| unauthorized("Bearer realm=\"vistoda-ezviz\""));
     let runtime = Arc::new(BootstrapRuntime {
-        auth: ApiAuthenticator::new(token)?,
         enrollment: EnrollmentManager::new(
             config.ezviz_token_file.clone(),
             config.upstream_timeout_seconds,
@@ -43,30 +41,10 @@ pub fn router(
         .route("/v1/enrollments", post(start))
         .route("/v1/enrollments/{enrollment}", post(verify).delete(cancel))
         .layer(middleware::from_fn_with_state(
-            Arc::clone(&runtime),
-            authenticate,
+            Arc::new(policy),
+            require_auth,
         ))
         .with_state(runtime))
-}
-
-async fn authenticate(
-    State(runtime): State<Arc<BootstrapRuntime>>,
-    request: Request,
-    next: Next,
-) -> Response {
-    if request.uri().path() == "/healthz" || runtime.auth.accepts(request.headers(), false) {
-        return next.run(request).await;
-    }
-    let mut response = (
-        StatusCode::UNAUTHORIZED,
-        Json(json!({"error":"unauthorized"})),
-    )
-        .into_response();
-    response.headers_mut().insert(
-        header::WWW_AUTHENTICATE,
-        HeaderValue::from_static("Bearer realm=\"vistoda-ezviz\""),
-    );
-    response
 }
 
 async fn health() -> Json<serde_json::Value> {

@@ -24,3 +24,4 @@
 - [ADR-0022 — EZVIZ session resilience and stale control reads](0022-session-resilience.md)
 - [ADR-0023 — In-process RTP muxing, RTP audio and media stalls](0023-rtp-muxing-audio-and-media-stalls.md)
 - [ADR-0024 — microSD intervals as recordings](0024-microsd-intervals-as-recordings.md)
+- [ADR-0025 — Sealed EZVIZ session and the shared provider kit crate](0025-sealed-session-and-shared-kit.md)

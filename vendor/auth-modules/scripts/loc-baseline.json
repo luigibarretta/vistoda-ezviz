@@ -1,0 +1,21 @@
+{
+  "extends": "fleet-default",
+  "roots": [
+    "src",
+    "scripts"
+  ],
+  "overrides": {
+    "extensions": {
+      "value": [".rs", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".svelte", ".py", ".go", ".swift", ".sql", ".sh"],
+      "reason": "The auth gold-standard and RSA guards are shell scripts; they were counted before 0.6 and stay counted (tightens the preset)."
+    }
+  },
+  "ignore": {},
+  "allow": {
+    "src/oidc/logout.rs": {
+      "linesAtBaseline": 491,
+      "reason": "Back-channel logout parsing, signature verification, replay checks, and adversarial tests stay colocated as one protocol contract.",
+      "until": "2027-05-01"
+    }
+  }
+}

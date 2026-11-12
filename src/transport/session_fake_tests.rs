@@ -162,12 +162,9 @@ pub(super) async fn harness(mode: Refresh) -> Harness {
 }
 
 pub(super) fn stored_refresh_token(path: &Path) -> String {
-    let raw = std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{error}"));
-    let value: Value = serde_json::from_str(&raw).unwrap_or_else(|error| panic!("{error}"));
-    value["rf_session_id"]
-        .as_str()
-        .unwrap_or_default()
-        .to_owned()
+    super::token_file::load(path)
+        .unwrap_or_else(|error| panic!("{error}"))
+        .rf_session_id
 }
 
 impl Harness {

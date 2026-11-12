@@ -1,5 +1,5 @@
-//! The EZVIZ session: one in-memory token, its private file and a
-//! single-flight refresh.
+//! The EZVIZ session: one in-memory token, its sealed file (`token_file`) and
+//! a single-flight refresh.
 //!
 //! EZVIZ rotates the refresh token on every refresh, so two concurrent
 //! refreshes with the same token would race and one would be rejected. All
@@ -27,12 +27,12 @@ use tokio::{
 use crate::{
     error::BridgeError,
     session_health::{SessionHealth, SessionState},
-    storage::{atomic_write_json, ensure_private_regular},
     transport::{
         EzvizToken,
         authed::{http_error, read_json},
         http::{mobile_headers, required_string},
         session_outcome::refreshed_session,
+        token_file,
     },
 };
 
@@ -60,7 +60,7 @@ pub(super) struct SessionStore {
 
 impl SessionStore {
     pub(super) fn load(path: PathBuf, health: SessionHealth) -> Result<Self, BridgeError> {
-        let token = read_token(&path)?;
+        let token = token_file::load(&path)?;
         Ok(Self {
             token: RwLock::new(token),
             generation: AtomicU64::new(0),
@@ -120,8 +120,7 @@ impl SessionStore {
     /// Replaces the session with a freshly enrolled token file.
     pub(super) async fn adopt(&self, staged: &Path) -> Result<(), BridgeError> {
         let _guard = self.lock.lock().await;
-        let token = read_token(staged)?;
-        std::fs::rename(staged, &self.path)?;
+        let token = token_file::adopt(staged, &self.path)?;
         let mut slot = self.token.write().await;
         *slot = token;
         self.generation.fetch_add(1, Ordering::SeqCst);
@@ -168,7 +167,7 @@ impl SessionStore {
     /// refresh token, so the old one in memory would be useless. The failure is
     /// logged and counted; the next successful write repairs the file.
     async fn publish(&self, token: EzvizToken, rotated: bool) -> Result<(), BridgeError> {
-        if let Err(error) = atomic_write_json(&self.path, &token) {
+        if let Err(error) = token_file::save(&self.path, &token) {
             tracing::error!(
                 error_type = error.diagnostic_code(),
                 "EZVIZ token file could not be written; keeping the session in memory"
@@ -224,12 +223,4 @@ impl SessionStore {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
-}
-
-fn read_token(path: &Path) -> Result<EzvizToken, BridgeError> {
-    let raw = ensure_private_regular(path, 20)?;
-    let token: EzvizToken = serde_json::from_str(&raw)
-        .map_err(|_| BridgeError::Configuration("EZVIZ token file is invalid".into()))?;
-    token.validate()?;
-    Ok(token)
 }

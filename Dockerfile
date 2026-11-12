@@ -2,6 +2,7 @@
 FROM rust:1.88.0-bookworm@sha256:af306cfa71d987911a781c37b59d7d67d934f49684058f96cf72079c3626bfe0 AS builder
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
+COPY vendor ./vendor
 RUN mkdir -p src/bin \
     && printf '\n' > src/lib.rs \
     && printf 'fn main() {}\n' > src/bin/bridge.rs \

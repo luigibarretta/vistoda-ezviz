@@ -106,8 +106,14 @@ async fn a_successful_start_refreshes_and_discovers_services() {
         .unwrap_or_else(|error| panic!("{error}"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(system.health.state(), SessionState::Ok);
-    let raw = std::fs::read_to_string(&system.path).unwrap_or_else(|error| panic!("{error}"));
-    assert!(raw.contains("refresh-1") && raw.contains("authAddr"));
+    // Stored sealed: nothing readable at the plaintext path or in the file.
+    assert!(!system.path.exists());
+    let sealed = super::token_file::sealed_path(&system.path);
+    let raw = std::fs::read_to_string(sealed).unwrap_or_else(|error| panic!("{error}"));
+    assert!(!raw.contains("refresh-1"));
+    let stored = super::token_file::load(&system.path).unwrap_or_else(|error| panic!("{error}"));
+    let stored = serde_json::to_string(&stored).unwrap_or_else(|error| panic!("{error}"));
+    assert!(stored.contains("refresh-1") && stored.contains("authAddr"));
 }
 
 #[tokio::test]

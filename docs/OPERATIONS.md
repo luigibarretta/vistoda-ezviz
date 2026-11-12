@@ -47,8 +47,13 @@ without echo and are not stored:
 ezviz-vtm-bridge enroll \
   --account 'owner@example.com' \
   --token-file ./data/token.json
-chmod 600 ./data/token.json
 ```
+
+The session is written sealed to `./data/token.sealed` with its key
+`./data/store.key` (both mode 0600, next to the configured `--token-file`
+path, which no longer holds a file). A plaintext `token.json` left by an
+earlier release is sealed and removed on the next start. Losing `store.key`
+means enrolling again; restore both files together.
 
 Generate the independent bridge API token with `openssl rand -hex 32`, place it
 in the secrets backend, and render it as a mode-0600 file at deploy time. Never

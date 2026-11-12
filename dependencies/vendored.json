@@ -9,6 +9,30 @@
         "checkout": ".ci/vistoda-provider-kit",
         "url": "https://github.com/luigibarretta/lib-vistoda-provider-kit.git"
       }
+    },
+    {
+      "name": "vistoda-provider-kit-crate",
+      "description": "The kit's Rust crate (crates/vistoda-provider-kit) at the same pin, a path dependency of the bridge",
+      "path": "vendor/vistoda-provider-kit",
+      "pinFile": "dependencies/vistoda-provider-kit.sha",
+      "treeSha256File": "dependencies/vistoda-provider-kit-crate.sha256",
+      "upstream": {
+        "checkout": ".ci/vistoda-provider-kit",
+        "url": "https://github.com/luigibarretta/lib-vistoda-provider-kit.git",
+        "subdir": "crates/vistoda-provider-kit"
+      }
+    },
+    {
+      "name": "auth-modules",
+      "description": "lib-auth-modules v0.2.0 as vendored by the kit (crates/auth-modules, its pin and digest in the kit's dependencies/), the kit crate's ../auth-modules path dependency",
+      "path": "vendor/auth-modules",
+      "pinFile": "dependencies/vistoda-provider-kit.sha",
+      "treeSha256File": "dependencies/auth-modules-vendor.sha256",
+      "upstream": {
+        "checkout": ".ci/vistoda-provider-kit",
+        "url": "https://github.com/luigibarretta/lib-vistoda-provider-kit.git",
+        "subdir": "crates/auth-modules"
+      }
     }
   ]
 }

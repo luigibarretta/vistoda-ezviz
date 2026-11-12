@@ -24,6 +24,7 @@ mod session_outcome;
 #[cfg(test)]
 mod session_tests;
 mod token;
+pub mod token_file;
 mod ts_mux;
 mod video;
 mod video_pipeline;

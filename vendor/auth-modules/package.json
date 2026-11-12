@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "scripts": {
+    "loc:check": "node third_party/repo-tooling/check-loc.mjs",
+    "nasa:warn": "node third_party/repo-tooling/check-nasa-warnings.mjs",
+    "auth:gold-standard": "bash scripts/check-auth-gold-standard.sh",
+    "security:audit": "bash scripts/check-rsa-private-usage.sh"
+  }
+}

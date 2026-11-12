@@ -1,0 +1,44 @@
+[package]
+name = "vistoda-provider-kit"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.88"
+authors = ["Luigi Barretta"]
+description = "Shared Rust building blocks of the Vistoda provider bridges"
+license = "Apache-2.0"
+repository = "https://github.com/luigibarretta/lib-vistoda-provider-kit"
+publish = false
+
+[dependencies]
+aes-gcm = "0.10"
+# Vendored next to this crate in the kit and in every consumer (`../auth-modules`,
+# lib-auth-modules v0.2.0, see dependencies/auth-modules.sha): owner-private
+# files and HKDF sub-keys only.
+auth-modules = { path = "../auth-modules", default-features = false, features = ["keys", "secret-files"] }
+axum = { version = "0.8", default-features = false }
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tracing = "0.1"
+zeroize = "1.8"
+
+[dev-dependencies]
+axum = "0.8"
+tempfile = "3.20"
+tokio = { version = "1.47", features = ["macros", "rt"] }
+tower = { version = "0.5", features = ["util"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

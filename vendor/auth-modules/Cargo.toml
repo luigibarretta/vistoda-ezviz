@@ -1,0 +1,63 @@
+[package]
+name = "auth-modules"
+version = "0.2.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://git.luigibarretta.com/luigibarretta/lib-auth-modules"
+description = "Shared Rust authentication building blocks for personal projects"
+
+[features]
+default = [
+    "audit",
+    "client-ip",
+    "errors",
+    "keys",
+    "oidc-pkce",
+    "one-time-token",
+    "password",
+    "rate-limit",
+    "recovery-codes",
+    "secret-files",
+    "security-profile",
+    "session-policy",
+    "totp",
+]
+audit = []
+client-ip = []
+errors = []
+keys = ["dep:hmac", "dep:sha2"]
+# LDAP over rustls. `ldap` keeps the historical aws-lc-rs provider; `ldap-ring`
+# selects ring instead (no C/cmake build). Enable exactly one of them: ldap3
+# builds its rustls config from the process-default provider, which rustls can
+# only infer when a single provider feature is active in the whole build.
+ldap = ["dep:ldap3", "ldap3/tls-rustls-aws-lc-rs"]
+ldap-ring = ["dep:ldap3", "ldap3/tls-rustls-ring"]
+oidc = ["dep:jsonwebtoken", "dep:openidconnect", "dep:serde", "dep:serde_json"]
+oidc-async = ["oidc", "openidconnect/reqwest"]
+oidc-blocking = ["oidc", "openidconnect/reqwest-blocking"]
+oidc-pkce = ["dep:base64", "dep:rand", "dep:sha2", "dep:url"]
+one-time-token = ["dep:base64", "dep:rand", "dep:sha2"]
+password = ["dep:argon2", "dep:password-hash"]
+rate-limit = []
+recovery-codes = ["dep:base64", "dep:rand", "dep:sha2"]
+# Unix-only private secret file read/atomic write (`secrets::files`).
+secret-files = []
+security-profile = ["password", "rate-limit", "session-policy"]
+session-policy = []
+testing = []
+totp = ["dep:hmac", "dep:rand", "dep:sha1"]
+
+[dependencies]
+argon2 = { version = "0.5", optional = true }
+base64 = { version = "0.22", optional = true }
+hmac = { version = "0.12", optional = true }
+ldap3 = { version = "0.12.1", default-features = false, features = ["sync"], optional = true }
+jsonwebtoken = { version = "10.3", default-features = false, features = ["rust_crypto"], optional = true }
+openidconnect = { version = "4.0.1", default-features = false, features = ["rustls-tls"], optional = true }
+password-hash = { version = "0.5", features = ["getrandom"], optional = true }
+rand = { version = "0.8", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+sha1 = { version = "0.10", optional = true }
+sha2 = { version = "0.10", optional = true }
+url = { version = "2", optional = true }

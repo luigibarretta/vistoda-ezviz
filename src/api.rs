@@ -19,8 +19,7 @@ use crate::{
     alarms::AlarmFeed, auth::ApiAuthenticator, config::BridgeConfig, controls::ControlService,
     device::DeviceService, enrollment::EnrollmentManager, error::BridgeError, hub::RawStreamHub,
     metrics::Metrics, recordings::RecordingManager, remux::MpegTsHub,
-    session_health::SessionHealth, snapshot::SnapshotService, storage::ensure_private_regular,
-    transport::CameraTransport,
+    session_health::SessionHealth, snapshot::SnapshotService, transport::CameraTransport,
 };
 
 #[path = "api_stream.rs"]
@@ -57,8 +56,7 @@ impl Runtime {
         transport: Arc<dyn CameraTransport>,
         session: SessionHealth,
     ) -> Result<Arc<Self>, BridgeError> {
-        let token = ensure_private_regular(&config.api_token_file, 32)?;
-        let auth = ApiAuthenticator::new(token)?;
+        let auth = crate::auth::load(&config.api_token_file)?;
         let metrics = Metrics::default();
         let mut raw = BTreeMap::new();
         let mut ts = BTreeMap::new();

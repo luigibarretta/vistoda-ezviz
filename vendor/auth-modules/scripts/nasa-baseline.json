@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "thresholds": {
+    "fileLines": 300,
+    "functionLines": 60,
+    "parameters": 6
+  },
+  "counters": {
+    "fileLines": 1,
+    "functionLines": 3,
+    "parameters": 0
+  }
+}

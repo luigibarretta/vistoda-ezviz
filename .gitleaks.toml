@@ -1,0 +1,7 @@
+# Default gitleaks rules plus one reviewed path allowlist.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "lib-auth-modules vendored through lib-vistoda-provider-kit as an exact archive of its pinned commit (check-vendored-dep proves pin and tree digest); its RFC 6238 TOTP test vector is public"
+paths = ['''^vendor/auth-modules/''']

@@ -13,7 +13,7 @@ use crate::{
     enrollment::EnrollmentManager,
     error::BridgeError,
     session_health::SessionHealth,
-    transport::{EzvizTransport, enroll},
+    transport::{EzvizTransport, enroll, token_file},
 };
 
 #[derive(Parser)]
@@ -92,9 +92,9 @@ async fn healthcheck() -> Result<(), BridgeError> {
 async fn serve() -> Result<(), BridgeError> {
     let config = BridgeConfig::from_env()?;
     let address = format!("{}:{}", config.bind_host, config.bind_port);
-    if !config.ezviz_token_file.is_file() {
+    if !token_file::exists(&config.ezviz_token_file)? {
         serve_enrollment(&address, &config).await?;
-        if !config.ezviz_token_file.is_file() {
+        if !token_file::exists(&config.ezviz_token_file)? {
             return Ok(());
         }
     }

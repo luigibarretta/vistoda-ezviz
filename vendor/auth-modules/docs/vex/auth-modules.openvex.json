@@ -1,0 +1,23 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://git.luigibarretta.com/luigibarretta/lib-auth-modules/vex/2026-11-07",
+  "author": "Luigi Barretta",
+  "timestamp": "2026-11-07T06:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": { "name": "RUSTSEC-2023-0071", "aliases": ["CVE-2023-49092"] },
+      "products": [{ "@id": "pkg:cargo/auth-modules" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "rsa is used only to verify public OIDC assertions; private-key operations are forbidden by scripts/check-rsa-private-usage.sh."
+    },
+    {
+      "vulnerability": { "name": "RUSTSEC-2026-0387" },
+      "products": [{ "@id": "pkg:cargo/auth-modules" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "crypto-bigint 0.5 is reached via p256/p384 0.13 for ES256/ES384 verification of public tokens only; EC signing exists only in test code. Review by 2027-02-01."
+    }
+  ]
+}

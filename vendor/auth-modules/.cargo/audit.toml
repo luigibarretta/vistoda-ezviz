@@ -1,0 +1,20 @@
+[advisories]
+ignore = [
+  # RUSTSEC-2023-0071 / CVE-2023-49092 tracks a timing side channel in
+  # RustCrypto `rsa` private-key operations. This crate receives `rsa`
+  # transitively from `openidconnect` and uses it only to verify public OIDC
+  # assertions. Server-side RSA signing, private-key decryption, and RSA JWE
+  # decryption are forbidden by scripts/check-rsa-private-usage.sh.
+  #
+  # Remove this ignore as soon as RustCrypto/RSA ships an advisory-compatible
+  # constant-time release. See docs/security-rsa-threat-model.md.
+  "RUSTSEC-2023-0071",
+  # RUSTSEC-2026-0387 tracks a timing side channel in `crypto-bigint` 0.5.
+  # It reaches this crate through `elliptic-curve` 0.13 (`p256`/`p384`) from
+  # `jsonwebtoken` and `openidconnect`. The library only verifies ES256/ES384
+  # signatures over public ID and logout tokens; EC signing exists only in
+  # #[cfg(test)] code, so no secret scalar is processed at runtime.
+  # VEX: docs/vex/auth-modules.openvex.json. Review by 2027-02-01 or as soon
+  # as `jsonwebtoken` moves to `p256` 0.14 (crypto-bigint 0.7).
+  "RUSTSEC-2026-0387",
+]

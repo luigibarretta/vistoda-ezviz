@@ -8,7 +8,10 @@ are not release artifacts.
 Production rules:
 
 - never expose the bridge directly to the Internet;
-- keep API and EZVIZ session tokens outside Git in mode-0600 files;
+- keep the API token outside Git in a mode-0600 file; the EZVIZ session is
+  stored sealed (`token.sealed` plus its key `store.key`, both mode 0600). A
+  backup that contains both files still contains the session: protect backups
+  of the data directory like the session itself;
 - never pass account passwords or MFA codes on command lines;
 - restrict network access to Home Assistant, SceneTrove and monitoring;
 - retain only sanitized metrics and logs; do not retain canary media;

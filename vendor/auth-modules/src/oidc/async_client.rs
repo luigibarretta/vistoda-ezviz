@@ -1,0 +1,278 @@
+use std::fmt;
+
+use openidconnect::core::CoreGenderClaim;
+use openidconnect::reqwest;
+use openidconnect::{AuthorizationCode, Nonce, OAuth2TokenResponse, TokenResponse};
+
+use super::callback::{verify_callback_state, CallbackParams};
+use super::client::{
+    build_authorization_flow, build_authorization_flow_with_values, client_from_metadata,
+    same_provider_configuration, ReadyClient, SharedTokenResponse,
+};
+use super::identity::{
+    identity_from_id_claims, merge_userinfo, validate_access_token_hash, validate_authorized_party,
+    validate_required_authentication_methods, verifier_for_config,
+};
+use super::logout::{jwks_from_metadata, validate_backchannel_logout_token_with_jwks};
+use super::security::{
+    issuer_url, pkce_verifier as validate_pkce_verifier, validate_nonce,
+    validate_provider_metadata, validate_state,
+};
+use super::{
+    types::OidcProviderMetadata, OidcAdditionalClaims, OidcAuthorizationFlow,
+    OidcBackchannelLogout, OidcClientConfig, OidcError, OidcIdentity,
+};
+
+/// A bounded OIDC client prepared from one validated discovery document.
+///
+/// Reuse this handle for login, callback, and back-channel logout. This avoids
+/// unauthenticated request paths performing discovery for every operation.
+/// Only the assurance policy may vary between calls, which supports normal
+/// login and forced step-up without allowing provider configuration drift.
+#[derive(Clone)]
+pub struct PreparedAsyncOidcClient {
+    config: OidcClientConfig,
+    http: reqwest::Client,
+    client: ReadyClient,
+    logout_jwks: jsonwebtoken::jwk::JwkSet,
+}
+
+impl fmt::Debug for PreparedAsyncOidcClient {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PreparedAsyncOidcClient")
+            .field("config", &self.config)
+            .field("logout_key_count", &self.logout_jwks.keys.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl PreparedAsyncOidcClient {
+    pub async fn discover(config: &OidcClientConfig) -> Result<Self, OidcError> {
+        let http = http_client(config)?;
+        let metadata = discover(config, &http).await?;
+        let logout_jwks = jwks_from_metadata(&metadata)?;
+        let client = client_from_metadata(config, metadata)?;
+        Ok(Self {
+            config: config.clone(),
+            http,
+            client,
+            logout_jwks,
+        })
+    }
+
+    pub fn authorization_url(
+        &self,
+        config: &OidcClientConfig,
+        state: &str,
+    ) -> Result<OidcAuthorizationFlow, OidcError> {
+        self.ensure_compatible(config)?;
+        validate_state(state)?;
+        Ok(build_authorization_flow(&self.client, config, state))
+    }
+
+    pub fn authorization_url_with_flow(
+        &self,
+        config: &OidcClientConfig,
+        state: &str,
+        nonce: &str,
+        pkce_verifier: &str,
+    ) -> Result<OidcAuthorizationFlow, OidcError> {
+        self.ensure_compatible(config)?;
+        validate_state(state)?;
+        validate_nonce(nonce)?;
+        validate_pkce_verifier(pkce_verifier)?;
+        Ok(build_authorization_flow_with_values(
+            &self.client,
+            config,
+            state,
+            nonce,
+            pkce_verifier,
+        ))
+    }
+
+    /// Verifies the callback `state` in constant time, then exchanges the
+    /// code and validates the ID token.
+    pub async fn exchange_callback(
+        &self,
+        config: &OidcClientConfig,
+        params: &CallbackParams<'_>,
+    ) -> Result<OidcIdentity, OidcError> {
+        verify_callback_state(params)?;
+        self.exchange_code_unchecked(config, params.code, params.nonce, params.pkce_verifier)
+            .await
+    }
+
+    #[deprecated(
+        since = "0.2.0",
+        note = "use exchange_callback: it verifies the returned state before the exchange (AM-03)"
+    )]
+    pub async fn exchange_code(
+        &self,
+        config: &OidcClientConfig,
+        code: &str,
+        nonce: &str,
+        pkce_verifier: &str,
+    ) -> Result<OidcIdentity, OidcError> {
+        self.exchange_code_unchecked(config, code, nonce, pkce_verifier)
+            .await
+    }
+
+    async fn exchange_code_unchecked(
+        &self,
+        config: &OidcClientConfig,
+        code: &str,
+        nonce: &str,
+        pkce_verifier: &str,
+    ) -> Result<OidcIdentity, OidcError> {
+        self.ensure_compatible(config)?;
+        validate_nonce(nonce)?;
+        let pkce_verifier = validate_pkce_verifier(pkce_verifier)?;
+        let token = self
+            .client
+            .exchange_code(AuthorizationCode::new(code.to_string()))
+            .map_err(|err| OidcError::new(format!("OIDC token endpoint missing: {err}")))?
+            .set_pkce_verifier(pkce_verifier)
+            .request_async(&self.http)
+            .await
+            .map_err(|err| OidcError::new(format!("OIDC token exchange failed: {err}")))?;
+        verified_identity(&self.client, &self.http, config, &token, nonce).await
+    }
+
+    pub fn validate_backchannel_logout_token(
+        &self,
+        config: &OidcClientConfig,
+        raw_token: &str,
+    ) -> Result<OidcBackchannelLogout, OidcError> {
+        self.ensure_compatible(config)?;
+        validate_backchannel_logout_token_with_jwks(config, raw_token, &self.logout_jwks)
+    }
+
+    fn ensure_compatible(&self, config: &OidcClientConfig) -> Result<(), OidcError> {
+        if same_provider_configuration(&self.config, config) {
+            Ok(())
+        } else {
+            Err(OidcError::new(
+                "OIDC request configuration does not match the prepared provider",
+            ))
+        }
+    }
+}
+
+pub async fn authorization_url(
+    config: &OidcClientConfig,
+    state: &str,
+) -> Result<OidcAuthorizationFlow, OidcError> {
+    PreparedAsyncOidcClient::discover(config)
+        .await?
+        .authorization_url(config, state)
+}
+
+pub async fn authorization_url_with_flow(
+    config: &OidcClientConfig,
+    state: &str,
+    nonce: &str,
+    pkce_verifier: &str,
+) -> Result<OidcAuthorizationFlow, OidcError> {
+    PreparedAsyncOidcClient::discover(config)
+        .await?
+        .authorization_url_with_flow(config, state, nonce, pkce_verifier)
+}
+
+/// Verifies the callback `state` before discovery, then exchanges the code.
+pub async fn exchange_callback(
+    config: &OidcClientConfig,
+    params: &CallbackParams<'_>,
+) -> Result<OidcIdentity, OidcError> {
+    verify_callback_state(params)?;
+    PreparedAsyncOidcClient::discover(config)
+        .await?
+        .exchange_callback(config, params)
+        .await
+}
+
+#[deprecated(
+    since = "0.2.0",
+    note = "use exchange_callback: it verifies the returned state before the exchange (AM-03)"
+)]
+pub async fn exchange_code(
+    config: &OidcClientConfig,
+    code: &str,
+    nonce: &str,
+    pkce_verifier: &str,
+) -> Result<OidcIdentity, OidcError> {
+    PreparedAsyncOidcClient::discover(config)
+        .await?
+        .exchange_code_unchecked(config, code, nonce, pkce_verifier)
+        .await
+}
+
+async fn discover(
+    config: &OidcClientConfig,
+    http: &reqwest::Client,
+) -> Result<OidcProviderMetadata, OidcError> {
+    let metadata = OidcProviderMetadata::discover_async(issuer_url(config)?, http)
+        .await
+        .map_err(|err| OidcError::new(format!("OIDC discovery failed: {err}")))?;
+    validate_provider_metadata(&metadata, config)?;
+    Ok(metadata)
+}
+
+fn http_client(config: &OidcClientConfig) -> Result<reqwest::Client, OidcError> {
+    reqwest::ClientBuilder::new()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(config.connect_timeout)
+        .timeout(config.request_timeout)
+        .build()
+        .map_err(|err| OidcError::new(format!("build OIDC HTTP client failed: {err}")))
+}
+
+async fn verified_identity(
+    client: &ReadyClient,
+    http: &reqwest::Client,
+    config: &OidcClientConfig,
+    token: &SharedTokenResponse,
+    nonce: &str,
+) -> Result<OidcIdentity, OidcError> {
+    let id_token = token
+        .id_token()
+        .ok_or_else(|| OidcError::new("OIDC provider did not return an id_token"))?;
+    let verifier = verifier_for_config(client, config);
+    let claims = id_token
+        .claims(&verifier, &Nonce::new(nonce.to_string()))
+        .map_err(|err| OidcError::new(format!("OIDC id_token validation failed: {err}")))?;
+    validate_access_token_hash(claims, id_token, token, &verifier)?;
+    validate_authorized_party(claims, config)?;
+    validate_required_authentication_methods(claims, config)?;
+
+    let mut identity = identity_from_id_claims(claims);
+    if config.fetch_userinfo {
+        let request = client.user_info(
+            token.access_token().to_owned(),
+            Some(claims.subject().to_owned()),
+        );
+        match request {
+            Ok(request) => match request
+                .request_async::<OidcAdditionalClaims, _, CoreGenderClaim>(http)
+                .await
+            {
+                Ok(userinfo) => {
+                    merge_userinfo(&mut identity, &userinfo, config.require_userinfo);
+                }
+                Err(err) if config.require_userinfo => {
+                    return Err(OidcError::new(format!(
+                        "OIDC UserInfo request failed: {err}"
+                    )));
+                }
+                Err(_) => {}
+            },
+            Err(err) if config.require_userinfo => {
+                return Err(OidcError::new(format!(
+                    "OIDC UserInfo endpoint unavailable: {err}"
+                )));
+            }
+            Err(_) => {}
+        }
+    }
+    Ok(identity)
+}

@@ -5,7 +5,10 @@ use reqwest::Client;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-use crate::{error::BridgeError, storage::atomic_write_json, transport::EzvizToken};
+use crate::{
+    error::BridgeError,
+    transport::{EzvizToken, token_file},
+};
 
 #[path = "enroll_api.rs"]
 mod api;
@@ -109,7 +112,7 @@ async fn persist(
     token_path: &Path,
 ) -> Result<(), BridgeError> {
     token.service_urls = Some(service_urls(client, &token).await?);
-    atomic_write_json(token_path, &token)
+    token_file::save(token_path, &token)
 }
 
 fn validate_code(code: &str) -> Result<(), BridgeError> {

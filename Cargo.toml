@@ -48,6 +48,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 url = "2.5"
 uuid = { version = "1.18", features = ["v4", "serde"] }
+# lib-vistoda-provider-kit crate, vendored with lib-auth-modules at the pin in
+# dependencies/vistoda-provider-kit.sha (dependencies/vendored.json).
+vistoda-provider-kit = { path = "vendor/vistoda-provider-kit" }
 zeroize = { version = "1.8", features = ["serde"] }
 
 [dev-dependencies]

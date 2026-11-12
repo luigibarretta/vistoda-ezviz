@@ -12,6 +12,10 @@
       "kind": "third_party",
       "optional": true,
       "reason": "pinned upstream checkouts that CI and ci-local fetch to verify vendored copies"
+    },
+    "vendor": {
+      "kind": "third_party",
+      "reason": "lib-vistoda-provider-kit crate and the lib-auth-modules archive it vendors, byte-verified against the kit pin (dependencies/vendored.json)"
     }
   },
   "allow": {}

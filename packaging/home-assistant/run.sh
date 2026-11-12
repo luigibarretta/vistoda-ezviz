@@ -43,7 +43,11 @@ vistoda_ensure_hex_token "${token_file}" bridge:bridge ''
 chown bridge:bridge "${cameras_file}"
 chown -R bridge:bridge "${data_dir}/recordings"
 chmod 0700 "${data_dir}/recordings"
+# token.json is the plaintext session of earlier releases; the bridge seals it into
+# token.sealed (key: store.key) on first start and removes it.
 vistoda_secure_file bridge:bridge "${data_dir}/token.json"
+vistoda_secure_file bridge:bridge "${data_dir}/token.sealed"
+vistoda_secure_file bridge:bridge "${data_dir}/store.key"
 chmod 0600 "${cameras_file}"
 
 export EZVIZ_BRIDGE_API_TOKEN_FILE="${token_file}"

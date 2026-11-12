@@ -12,12 +12,13 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, Request, State},
-    http::{HeaderValue, StatusCode, header},
+    http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
     routing::post,
 };
 use serde_json::json;
+use vistoda_provider_kit::auth::unauthorized;
 
 use crate::{
     VERSION,
@@ -54,16 +55,7 @@ pub async fn authenticate(
             .metrics
             .increment_labeled("api_auth_failures_total", &[])
             .await;
-        let mut response = (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error":"unauthorized"})),
-        )
-            .into_response();
-        response.headers_mut().insert(
-            header::WWW_AUTHENTICATE,
-            HeaderValue::from_static("Basic realm=\"ezviz-vtm-bridge\""),
-        );
-        return response;
+        return unauthorized("Basic realm=\"ezviz-vtm-bridge\"");
     }
     if runtime.session.reauth_required() && needs_session(&path) {
         let (status, body) = BridgeError::ReauthRequired.public_response();

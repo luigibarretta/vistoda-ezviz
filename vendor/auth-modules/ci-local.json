@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "strict": true,
+  "logMaxKbPerStep": 256,
+  "defaults": {
+    "timeout_s": 600,
+    "env": { "CARGO_INCREMENTAL": "0" }
+  },
+  "pressure": { "maxSomeAvg60": 20 },
+  "steps": [
+    {
+      "name": "repo-tooling-sync",
+      "description": "third_party/repo-tooling matches dist/ of the pinned commit (CI checks out the pin at vendor/repo-tooling; locally set REPO_TOOLING_UPSTREAM)",
+      "uses": "repo-tooling-sync",
+      "quick": true,
+      "timeout_s": 60
+    },
+    {
+      "name": "loc",
+      "description": "npm run loc:check (fleet-default preset, scripts/loc-baseline.json)",
+      "uses": "loc",
+      "quick": true,
+      "timeout_s": 120
+    },
+    {
+      "name": "nasa",
+      "description": "npm run nasa:warn -- --ratchet (counters in scripts/nasa-baseline.json never rise)",
+      "uses": "nasa",
+      "quick": true,
+      "timeout_s": 300,
+      "with": { "args": ["--ratchet"] }
+    },
+    {
+      "name": "auth-gold",
+      "description": "Auth gold-standard guard in standalone-library mode (needs ripgrep)",
+      "run": ["bash", "scripts/check-auth-gold-standard.sh", "{root}"],
+      "quick": true,
+      "timeout_s": 300
+    },
+    {
+      "name": "lockfile",
+      "description": "Cargo.lock is not committed (library): resolve one when absent so the audits see the same graph",
+      "run": "test -f Cargo.lock || cargo generate-lockfile",
+      "quick": true,
+      "timeout_s": 300
+    },
+    {
+      "name": "security-audit",
+      "description": "npm run security:audit: no RSA private-key/JWE use, cargo audit -D unmaintained -D unsound",
+      "run": ["bash", "scripts/check-rsa-private-usage.sh"],
+      "needs": ["lockfile"],
+      "quick": true,
+      "timeout_s": 600
+    },
+    {
+      "name": "audit-lockfiles",
+      "description": "RustSec audit of every Cargo.lock; ignores come only from the OpenVEX statements for pkg:cargo/auth-modules",
+      "uses": "audit-all-lockfiles",
+      "needs": ["lockfile"],
+      "quick": true,
+      "timeout_s": 600,
+      "with": {
+        "ecosystems": ["cargo"],
+        "vex": ["docs/vex/auth-modules.openvex.json"],
+        "vexProducts": ["pkg:cargo/auth-modules"],
+        "cargo": { "ignore": [], "args": ["-D", "unmaintained", "-D", "unsound"] }
+      }
+    },
+    {
+      "name": "rust-fmt",
+      "description": "rustfmt check",
+      "run": ["cargo", "fmt", "--all", "--", "--check"],
+      "quick": true,
+      "timeout_s": 300
+    },
+    {
+      "name": "rust-check",
+      "description": "cargo check, all features",
+      "run": ["cargo", "check", "--locked", "--all-features"],
+      "heavy": true,
+      "timeout_s": 1800
+    },
+    {
+      "name": "rust-clippy",
+      "description": "clippy, all targets and features, warnings denied",
+      "run": ["cargo", "clippy", "--locked", "--all-features", "--all-targets", "--", "-D", "warnings"],
+      "heavy": true,
+      "timeout_s": 1800
+    },
+    {
+      "name": "rust-test",
+      "description": "Rust tests, all features",
+      "run": ["cargo", "test", "--locked", "--all-features"],
+      "heavy": true,
+      "timeout_s": 1800
+    }
+  ]
+}

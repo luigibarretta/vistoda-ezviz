@@ -22,7 +22,7 @@
     },
     {
       "name": "provider-kit",
-      "description": "Vendored bootstrap is byte-identical to lib-vistoda-provider-kit at the pin (dependencies/vendored.json); fetches the pinned commit into .ci/vistoda-provider-kit",
+      "description": "Vendored bootstrap, Rust crate and lib-auth-modules match lib-vistoda-provider-kit at the pin byte-for-byte and by tree digest (dependencies/vendored.json); fetches the pinned commit into .ci/vistoda-provider-kit",
       "uses": "check-vendored-dep",
       "quick": true,
       "timeout_s": 300,
@@ -81,7 +81,7 @@
     {
       "name": "source-languages",
       "description": "Rust-only product: no Python sources outside vendored trees",
-      "run": "found=$(find . \\( -path ./.git -o -path ./.ci -o -path ./target -o -path ./third_party \\) -prune -o -type f \\( -name '*.py' \\) -print); if [ -n \"$found\" ]; then echo \"non-Rust sources are not allowed:\" >&2; echo \"$found\" >&2; exit 1; fi",
+      "run": "found=$(find . \\( -path ./.git -o -path ./.ci -o -path ./target -o -path ./third_party -o -path ./vendor \\) -prune -o -type f \\( -name '*.py' \\) -print); if [ -n \"$found\" ]; then echo \"non-Rust sources are not allowed:\" >&2; echo \"$found\" >&2; exit 1; fi",
       "quick": true,
       "timeout_s": 60
     },
