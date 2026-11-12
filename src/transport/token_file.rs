@@ -70,3 +70,52 @@ pub fn adopt(staged: &Path, path: &Path) -> Result<EzvizToken, BridgeError> {
         .map_err(|error| BridgeError::Configuration(format!("EZVIZ token store: {error}")))?;
     Ok(token)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{exists, load, save};
+    use crate::{error::BridgeError, transport::EzvizToken};
+
+    fn token() -> EzvizToken {
+        serde_json::from_value(serde_json::json!({
+            "session_id": "s".repeat(32),
+            "rf_session_id": "r".repeat(32),
+            "api_url": "apiieu.ezvizlife.com",
+        }))
+        .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    #[test]
+    fn a_missing_key_fails_closed_and_still_counts_as_enrolled() {
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let path = directory.path().join("token.json");
+        assert!(!exists(&path).unwrap_or_else(|error| panic!("{error}")));
+        save(&path, &token()).unwrap_or_else(|error| panic!("{error}"));
+        std::fs::remove_file(directory.path().join("store.key"))
+            .unwrap_or_else(|error| panic!("{error}"));
+        // Never "not enrolled": serve must not fall back to a new enrollment.
+        assert!(exists(&path).unwrap_or_else(|error| panic!("{error}")));
+        assert!(
+            matches!(load(&path), Err(BridgeError::Configuration(message)) if message.contains("key"))
+        );
+    }
+
+    #[test]
+    fn a_plaintext_token_of_an_earlier_release_is_sealed_at_first_check() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let path = directory.path().join("token.json");
+        let plaintext = serde_json::to_vec(&token()).unwrap_or_else(|error| panic!("{error}"));
+        std::fs::write(&path, plaintext).unwrap_or_else(|error| panic!("{error}"));
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert!(exists(&path).unwrap_or_else(|error| panic!("{error}")));
+        assert!(!path.exists());
+        assert_eq!(
+            load(&path)
+                .unwrap_or_else(|error| panic!("{error}"))
+                .rf_session_id,
+            "r".repeat(32)
+        );
+    }
+}

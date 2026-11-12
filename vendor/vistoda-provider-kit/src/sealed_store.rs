@@ -7,26 +7,26 @@
 //! (with the key given to [`SealedFile::with_legacy_key`]) and re-sealed.
 //!
 //! [`SealedFile::migrating_plaintext`] adopts a provider's former plaintext
-//! file once: it is sealed, read back and only then removed, so an enrolled
-//! session is never lost; after a crash between sealing and removal the
-//! plaintext is removed once the sealed copy opens.
+//! file: it is sealed, read back and only then removed, so an enrolled session
+//! is never lost. A plaintext file always wins over an existing sealed one: it
+//! is either newer (an earlier release ran after a downgrade and rotated the
+//! session) or identical (a crash between sealing and removal).
 //!
 //! The key file lives next to the sealed data, so the sealing protects against
 //! a partial read of the data directory and against holders of the provider
 //! API token; anyone who can read the whole directory (for example a full
 //! backup) can still open it.
 
+mod envelope;
 mod key;
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use aes_gcm::aead::{Aead, AeadCore, OsRng};
-use aes_gcm::{Aes256Gcm, Nonce};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use envelope::{decrypt, parse};
+pub use envelope::{open, seal};
 pub use key::{KEY_FILE_NAME, KeyFile, SealingKey};
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use zeroize::Zeroizing;
 
@@ -50,61 +50,20 @@ pub enum SealError {
     Authentication,
     #[error("sealed file key is unusable: {0}")]
     Key(String),
-}
-
-#[derive(Deserialize, Serialize)]
-struct Envelope {
-    version: u8,
-    nonce: String,
-    ciphertext: String,
+    /// The sealed file exists but its key file does not: never "not
+    /// enrolled", since a new enrollment would silently replace the data.
+    #[error("sealed file exists but its key file {} is missing", .0.display())]
+    MissingKey(PathBuf),
 }
 
 /// What [`SealedFile::migrate`] did with the former plaintext file.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Migration {
     Nothing,
+    /// The plaintext was sealed; no sealed file existed.
     Sealed,
-    StaleRemoved,
-}
-
-/// Seals `plaintext` into an envelope of `version`.
-pub fn seal(key: &SealingKey, version: u8, plaintext: &[u8]) -> Result<Vec<u8>, SealError> {
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-    let ciphertext = key
-        .cipher()
-        .encrypt(&nonce, plaintext)
-        .map_err(|_| SealError::Authentication)?;
-    serde_json::to_vec(&Envelope {
-        version,
-        nonce: STANDARD.encode(nonce),
-        ciphertext: STANDARD.encode(ciphertext),
-    })
-    .map_err(|_| SealError::Encoding)
-}
-
-/// Opens an envelope with `key` whatever its version; returns the version too.
-pub fn open(key: &SealingKey, envelope: &[u8]) -> Result<(u8, Zeroizing<Vec<u8>>), SealError> {
-    let envelope = parse(envelope)?;
-    Ok((envelope.version, decrypt(key, &envelope)?))
-}
-
-fn parse(bytes: &[u8]) -> Result<Envelope, SealError> {
-    serde_json::from_slice(bytes).map_err(|_| SealError::Encoding)
-}
-
-fn decrypt(key: &SealingKey, envelope: &Envelope) -> Result<Zeroizing<Vec<u8>>, SealError> {
-    let nonce: [u8; 12] = STANDARD
-        .decode(&envelope.nonce)
-        .map_err(|_| SealError::Encoding)?
-        .try_into()
-        .map_err(|_| SealError::Encoding)?;
-    let ciphertext = STANDARD
-        .decode(&envelope.ciphertext)
-        .map_err(|_| SealError::Encoding)?;
-    key.cipher()
-        .decrypt(Nonce::from_slice(&nonce), ciphertext.as_ref())
-        .map(Zeroizing::new)
-        .map_err(|_| SealError::Authentication)
+    /// The plaintext replaced an existing sealed file.
+    Replaced,
 }
 
 /// Envelope version and plaintext of an opened file.
@@ -193,34 +152,31 @@ impl SealedFile {
         Ok(private_file::remove(&self.path)?)
     }
 
-    /// Seals the former plaintext file, if one is configured and present.
+    /// Seals the former plaintext file, if one is configured and present,
+    /// over any existing sealed file (see the module docs).
     pub fn migrate(&self) -> Result<Migration, SealError> {
         let Some(legacy) = self.plaintext.as_deref() else {
             return Ok(Migration::Nothing);
         };
-        if !present(legacy)? {
-            return Ok(Migration::Nothing);
-        }
-        if present(&self.path)? {
-            self.read_sealed()?;
-            private_file::remove(legacy)?;
-            tracing::info!(path = %legacy.display(), "removed plaintext already sealed");
-            return Ok(Migration::StaleRemoved);
-        }
         let plaintext = match private_file::read(legacy, ReadPolicy::new(self.max_bytes)) {
             Ok(plaintext) => plaintext,
-            // A concurrent migration finished first.
+            // Absent, or a concurrent migration finished first.
             Err(error) if error.is_not_found() => return Ok(Migration::Nothing),
             Err(error) => return Err(error.into()),
         };
+        let replaced = present(&self.path)?;
         self.save(&plaintext)?;
         match self.read_sealed()? {
             Some((_, sealed)) if *sealed == *plaintext => {}
             _ => return Err(SealError::Encoding),
         }
         private_file::remove(legacy)?;
-        tracing::info!(path = %self.path.display(), "plaintext file sealed and removed");
-        Ok(Migration::Sealed)
+        tracing::info!(path = %self.path.display(), replaced, "plaintext file sealed and removed");
+        Ok(if replaced {
+            Migration::Replaced
+        } else {
+            Migration::Sealed
+        })
     }
 
     fn read_sealed(&self) -> Result<Option<Opened>, SealError> {
@@ -230,7 +186,12 @@ impl SealedFile {
         };
         let envelope = parse(&raw)?;
         let key = match (envelope.version, &self.legacy_key) {
-            (VERSION_KEY_FILE, _) => self.key.existing()?,
+            (VERSION_KEY_FILE, _) => self.key.existing().map_err(|error| match error {
+                SealError::File(file) if file.is_not_found() => {
+                    SealError::MissingKey(self.key.path().to_path_buf())
+                }
+                other => other,
+            })?,
             (VERSION_LEGACY_KEY, Some(legacy)) => legacy.clone(),
             (version, _) => return Err(SealError::UnsupportedVersion(version)),
         };

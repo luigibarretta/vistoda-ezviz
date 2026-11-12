@@ -92,7 +92,7 @@ fn a_lost_or_replaced_key_fails_closed() {
     let key = directory.path().join(KEY_FILE_NAME);
     fs::remove_file(&key).expect("remove key");
     let reopened = sealed(directory.path(), SESSION);
-    assert!(matches!(reopened.load(), Err(SealError::File(error)) if error.is_not_found()));
+    assert!(matches!(reopened.load(), Err(SealError::MissingKey(path)) if path == key));
     assert!(!key.exists(), "opening must never create key material");
     write_private(&key, &(0_u8..32).collect::<Vec<_>>());
     assert!(matches!(
@@ -190,19 +190,24 @@ fn a_rejected_plaintext_file_is_kept_and_nothing_is_sealed() {
 }
 
 #[test]
-fn stale_plaintext_is_removed_only_when_the_sealed_copy_opens() {
+fn a_newer_plaintext_replaces_the_sealed_copy() {
+    // After a downgrade the earlier release rotated the session in plaintext;
+    // that copy is newer than the sealed one and must win.
     let directory = tempfile::tempdir().expect("temporary directory");
     let (file, plaintext) = migrating(directory.path());
-    file.save(b"sealed wins").expect("save");
+    file.save(b"stale sealed session").expect("save");
     write_private(&plaintext, SECRET);
-    assert_eq!(file.migrate().expect("stale"), Migration::StaleRemoved);
+    assert_eq!(file.migrate().expect("replace"), Migration::Replaced);
     assert!(!plaintext.exists());
-    assert_eq!(
-        &*file.load().expect("load").expect("present"),
-        b"sealed wins"
-    );
+    assert_eq!(&*file.load().expect("load").expect("present"), SECRET);
+    // A crash between sealing and removal leaves both copies identical:
+    // migrating again is idempotent.
+    write_private(&plaintext, SECRET);
+    assert_eq!(file.migrate().expect("again"), Migration::Replaced);
+    assert_eq!(&*file.load().expect("load").expect("present"), SECRET);
+    // A damaged sealed file never blocks the readable plaintext.
     write_private(&plaintext, SECRET);
     write_private(file.path(), b"corrupt");
-    assert!(matches!(file.migrate(), Err(SealError::Encoding)));
-    assert!(plaintext.exists(), "never drop the only readable copy");
+    assert_eq!(&*file.load().expect("repaired").expect("present"), SECRET);
+    assert!(!plaintext.exists());
 }

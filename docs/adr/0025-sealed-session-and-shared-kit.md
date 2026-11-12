@@ -23,9 +23,12 @@ under `vendor/` at the kit pin and verified by `check-vendored-dep`.
   envelope `{version, nonce, ciphertext}`, AES-256-GCM, key = HKDF sub-key
   `vistoda-ezviz/ezviz-token/v1` of the 32 random bytes in `store.key`
   (mode 0600, created once without ever replacing an existing key).
-- A plaintext `token.json` from an earlier release is sealed on first use,
-  read back and only then removed; if it fails the private-file checks it is
-  kept and startup fails, so an enrolled session is never lost.
+- `serve` seals a plaintext `token.json` from an earlier release at startup,
+  reads it back and only then removes it; a plaintext file wins over an
+  existing sealed one (it is newer after a downgrade). If it fails the
+  private-file checks it is kept and startup fails, so an enrolled session is
+  never lost. A sealed session whose `store.key` is missing fails closed and
+  never reads as "not enrolled".
 - `auth.rs` and `storage.rs` are thin adapters over the kit's `auth` and
   `private_file`; the router-wide middleware stays in `api_session` because it
   also counts failures and reports `reauth_required`.

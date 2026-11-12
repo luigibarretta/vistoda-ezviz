@@ -6,6 +6,12 @@
 //! file can protect several files without sharing a cipher key between them.
 //! [`SealingKey::from_label_and_material`] is the older derivation
 //! `SHA-256(label || 0x00 || material)`, kept to open legacy envelopes.
+//!
+//! Residual risk: the key-file bytes and the derived key are held in wiped
+//! (`Zeroizing`) buffers here, but `auth_modules::keys` (vendored unmodified)
+//! keeps its own copies in a `MasterKey` and a `SubKey` that are not wiped on
+//! drop. Those two short-lived heap/stack copies per key load may remain in
+//! freed memory until reused; the process caches one derived key per file.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -135,6 +141,7 @@ fn derive(material: &[u8], label: KeyLabel) -> Result<SealingKey, SealError> {
     if material.len() != MASTER_KEY_BYTES {
         return Err(SealError::Key("store key must be exactly 32 bytes".into()));
     }
+    // `MasterKey` and `SubKey` are not wiped on drop (module docs).
     let master = MasterKey::from_bytes(material.to_vec())
         .map_err(|error| SealError::Key(error.to_string()))?;
     Ok(SealingKey(Zeroizing::new(
